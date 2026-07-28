@@ -1,0 +1,15 @@
+{
+  "layout": "stack",
+  "regions": [
+    {
+      "id": "browser",
+      "widgets": [
+        {
+          "type": "iframe",
+          "title": "Mini Browser",
+          "src": "/api/apps/mini-browser/view"
+        }
+      ]
+    }
+  ]
+}

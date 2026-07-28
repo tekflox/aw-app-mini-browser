@@ -1,0 +1,66 @@
+{
+  "manifest_version": 1,
+  "id": "mini-browser",
+  "name": "Mini Browser",
+  "version": "0.1.0",
+  "description": "Small in-app web browser — URL bar, back/forward/reload/home, an iframe, and a server-side proxy that strips X-Frame-Options/CSP so sites that would otherwise refuse to be framed can still be viewed inside AW.",
+  "tier": "inprocess",
+  "requires_ui_refresh": true,
+  "publisher": "TekFlox",
+  "resource_estimate": {
+    "cpu": "low",
+    "memory": "low",
+    "disk": "low"
+  },
+  "runtime": {
+    "python": ">=3.11",
+    "entrypoint": "mini_browser_app.plugin:MiniBrowserAppPlugin",
+    "pip_requires": [
+      "httpx>=0.24"
+    ]
+  },
+  "permissions": [
+    "routes:register",
+    "net:outbound",
+    "ui:slots:core.nav.workspace"
+  ],
+  "contributes": {
+    "routes": [
+      {
+        "prefix": "/api/apps/mini-browser"
+      }
+    ],
+    "windows": [
+      {
+        "id": "mini-browser.main",
+        "title": "Mini Browser",
+        "body": {
+          "type": "declarative",
+          "spec": "windows/main.json"
+        }
+      }
+    ],
+    "nav": [
+      {
+        "id": "mini-browser.nav",
+        "label": "Mini Browser",
+        "icon": "globe",
+        "section": "workspace",
+        "opens": "mini-browser.main"
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "home_url": {
+        "type": "string",
+        "default": "https://example.com",
+        "description": "URL the browser loads on open and on the home button."
+      }
+    },
+    "required": []
+  },
+  "dependencies": {},
+  "migrations": {}
+}
