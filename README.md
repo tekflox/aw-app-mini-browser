@@ -1,8 +1,6 @@
 # aw-app-mini-browser
 
-Decoupled app for aw-workspace, per the
-[Decoupled Apps Framework ADR](https://github.com/tekflox/agentic-workspace/blob/main/docs/knowledge_base/docs/architecture/decoupled-apps-framework.md)
-(`aw-app.json` manifest schema v1). A small in-app web browser: URL bar,
+AW workspace app that provides a small in-app web browser: URL bar,
 back/forward/reload/home, an iframe, and a server-side proxy that strips
 `X-Frame-Options` / CSP `frame-ancestors` headers so sites that would
 otherwise refuse to be framed can still be viewed inside AW.
@@ -18,14 +16,13 @@ window (`windows/main.json`, an `iframe` widget pointing at this app's own
 
 Validated as a standalone prototype first (`agentic-workspace/src/custom_apps/mini-browser`,
 proxy tested against `https://example.com` — 200, headers stripped,
-`<base>` injected) before porting onto this framework's manifest +
+`<base>` injected) before packaging with this framework's manifest +
 `ctx.routes` shape. `tests/test_routes.py` covers the viewer shell, the
 proxy's header-stripping (mocked HTTP, no live network in CI), and the
 window-spec/route consistency check (same pattern as the sibling apps).
 
-Not yet done: actual **install** into a running aw-workspace (this repo
-existing + CI'd to the marketplace is a separate step from being installed
-— see the apps framework's reconciler/catalog model).
+Not yet done: actual **install** into a running aw-workspace. This repo can
+be tested and listed before it is installed into a live workspace.
 
 ## Endpoints (mounted at `/api/apps/mini-browser`)
 
