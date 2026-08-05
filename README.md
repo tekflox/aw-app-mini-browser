@@ -1,48 +1,22 @@
-# aw-app-mini-browser
+# Mini Browser
 
-AW workspace app that provides a small in-app web browser: URL bar,
-back/forward/reload/home, an iframe, and a server-side proxy that strips
-`X-Frame-Options` / CSP `frame-ancestors` headers so sites that would
-otherwise refuse to be framed can still be viewed inside AW.
+Mini Browser adds a lightweight web browser window to an AW Workspace. It is designed for quick page checks without leaving the workspace.
 
-Same pattern as `tekflox/aw-app-whiteboard` / `aw-app-git` /
-`aw-app-presentations`: Tier-1 **inprocess** app — a FastAPI sub-app built
-by `mini_browser_app/routes.py` and mounted at `/api/apps/mini-browser` via
-`ctx.routes.register` (`routes:register` permission), plus a declarative
-window (`windows/main.json`, an `iframe` widget pointing at this app's own
-`GET /view`) and a workspace-nav entry.
+## What It Does
 
-## Status
+- Opens a simple browser window inside the workspace.
+- Includes a URL bar plus back, forward, reload, and home controls.
+- Loads pages through a workspace proxy when a site blocks normal embedding.
+- Lets the default home page be configured.
 
-Validated as a standalone prototype first (`agentic-workspace/src/custom_apps/mini-browser`,
-proxy tested against `https://example.com` — 200, headers stripped,
-`<base>` injected) before packaging with this framework's manifest +
-`ctx.routes` shape. `tests/test_routes.py` covers the viewer shell, the
-proxy's header-stripping (mocked HTTP, no live network in CI), and the
-window-spec/route consistency check (same pattern as the sibling apps).
+## Why Use It
 
-Not yet done: actual **install** into a running aw-workspace. This repo can
-be tested and listed before it is installed into a live workspace.
+Use this app when you need a quick in-workspace way to view a page, inspect a link, or keep a lightweight browser beside other workspace tools. It is best for simple browsing and fast checks.
 
-## Endpoints (mounted at `/api/apps/mini-browser`)
+## How To Use It
 
-- `GET /view` — the browser UI shell.
-- `GET /proxy?url=<absolute-url>` — fetches `url` server-side, strips
-  blocking headers, injects a `<base>` tag so the page's own relative
-  links/resources resolve straight back to the origin (not through the
-  proxy) — only the top-level document needs its blocking headers
-  stripped, sub-resources aren't being framed.
+Install the app, open Mini Browser from the workspace navigation, and enter a URL. Use the home setting to choose the page it should open by default.
 
-## Known limitation
+## What It Delivers
 
-This is intentionally a simple regex-based HTML patch, not a full
-URL-rewriting proxy (Ultraviolet/Rammerhead-style). Works well for
-static/simple sites; JS-heavy SPAs with `window.top !== window.self`
-anti-iframe checks or strict per-resource CSP may still fail.
-
-## Local test
-
-```
-.venv/aw/bin/python -m pytest tests/test_routes.py
-.venv/aw/bin/python tests/validate_manifest.py
-```
+The app gives AW Workspace a compact browsing surface. It is useful when a full browser session is unnecessary but a web page still needs to be visible inside the workspace.
