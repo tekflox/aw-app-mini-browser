@@ -11,6 +11,14 @@ runtime (``routes:register`` contribution point).
   the top-level document's blocking headers need stripping — sub-resources
   (images, CSS, XHR/fetch) aren't being framed, so they're left to load
   directly from the origin via an injected ``<base>`` tag.
+* ``/browser/*`` — piloted-browser routes ported from ``tekflox/aw-app-devctl``
+  (``devctl_app/routes.py``), driving the shared ``aw-app-browser`` CDP
+  container. These are the HTTP twin of ``mcp_server/mini_browser_browser.py``'s
+  MCP tools — an agent calls the MCP tool to act, and (since a stdio MCP
+  server runs inside the mcp-gateway container, not this one) fetches bytes
+  like a screenshot back through this Tier-1 HTTP route instead, which shares
+  the filesystem the agent runner sees. See the workspace KB memory
+  "how-an-agent-sends-a-screenshot".
 
 Intentionally simple (regex-based HTML patch, not a full URL-rewriting
 proxy like Ultraviolet/Rammerhead) — good for static/simple sites, not
@@ -22,9 +30,10 @@ from __future__ import annotations
 import re
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
+from .cdp import client as browser_client
 from .viewer import VIEWER_SHELL
 
 _BLOCKED_RESPONSE_HEADERS = {
@@ -89,5 +98,30 @@ def build_routes(home_url: str) -> FastAPI:
         }
 
         return Response(content=body, media_type=content_type, headers=headers)
+
+    async def _guard(fn):
+        try:
+            return await fn()
+        except Exception as exc:  # surface CDP/browser errors as 502, not 500
+            return JSONResponse(status_code=502, content={"error": "browser", "detail": str(exc)})
+
+    @api.get("/browser/screenshot")
+    async def browser_screenshot():
+        try:
+            png = await browser_client.screenshot()
+        except Exception as exc:
+            return JSONResponse(status_code=502, content={"error": "browser", "detail": str(exc)})
+        return Response(content=png, media_type="image/png")
+
+    @api.get("/browser/current")
+    async def browser_current():
+        return await _guard(browser_client.current)
+
+    @api.post("/browser/navigate")
+    async def browser_navigate(body: dict = Body(...)):
+        async def go():
+            await browser_client.navigate(body["url"])
+            return {"ok": True, "url": body["url"]}
+        return await _guard(go)
 
     return api

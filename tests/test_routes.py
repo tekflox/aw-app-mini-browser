@@ -60,6 +60,62 @@ def test_proxy_strips_blocking_headers(client, monkeypatch):
     assert "<base href=" in resp.text
 
 
+def test_browser_screenshot_returns_png(client, monkeypatch):
+    from mini_browser_app.cdp import client as browser_client
+
+    async def fake_screenshot(fmt="png"):
+        return b"\x89PNG\r\n\x1a\n-fake-"
+
+    monkeypatch.setattr(browser_client, "screenshot", fake_screenshot)
+
+    resp = client.get("/browser/screenshot")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content.startswith(b"\x89PNG")
+
+
+def test_browser_navigate_calls_cdp_client(client, monkeypatch):
+    from mini_browser_app.cdp import client as browser_client
+
+    seen = {}
+
+    async def fake_navigate(url):
+        seen["url"] = url
+
+    monkeypatch.setattr(browser_client, "navigate", fake_navigate)
+
+    resp = client.post("/browser/navigate", json={"url": "https://www.google.com"})
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "url": "https://www.google.com"}
+    assert seen["url"] == "https://www.google.com"
+
+
+def test_browser_current_returns_title_and_url(client, monkeypatch):
+    from mini_browser_app.cdp import client as browser_client
+
+    async def fake_current():
+        return {"title": "Google", "url": "https://www.google.com/"}
+
+    monkeypatch.setattr(browser_client, "current", fake_current)
+
+    resp = client.get("/browser/current")
+    assert resp.status_code == 200
+    assert resp.json() == {"title": "Google", "url": "https://www.google.com/"}
+
+
+def test_browser_screenshot_cdp_failure_returns_502(client, monkeypatch):
+    from mini_browser_app.cdp import client as browser_client
+
+    async def fake_screenshot(fmt="png"):
+        raise RuntimeError("aw-app-browser not reachable")
+
+    monkeypatch.setattr(browser_client, "screenshot", fake_screenshot)
+
+    resp = client.get("/browser/screenshot")
+    assert resp.status_code == 502
+    assert resp.json()["error"] == "browser"
+
+
 def test_window_spec_endpoints_are_registered():
     """windows/main.json's iframe widget must reference a real route on
     this app's own FastAPI sub-app — a stale path here would 404 silently

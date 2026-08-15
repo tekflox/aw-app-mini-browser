@@ -2,8 +2,8 @@
   "manifest_version": 1,
   "id": "mini-browser",
   "name": "Mini Browser",
-  "version": "0.2.0",
-  "description": "Small in-app web browser \u2014 URL bar, back/forward/reload/home, an iframe, and a server-side proxy that strips X-Frame-Options/CSP so sites that would otherwise refuse to be framed can still be viewed inside AW.",
+  "version": "0.3.0",
+  "description": "Small in-app web browser \u2014 URL bar, back/forward/reload/home, an iframe, and a server-side proxy that strips X-Frame-Options/CSP so sites that would otherwise refuse to be framed can still be viewed inside AW. Also pilots the shared aw-app-browser container over CDP (navigate/click/type/eval/screenshot), ported from aw-app-devctl: a mini-browser-browser MCP tool wrapper is contributed for agents via mcp.json, with an HTTP twin under /browser/* for fetching screenshot bytes back onto the workspace filesystem.",
   "tier": "inprocess",
   "requires_ui_refresh": true,
   "publisher": "TekFlox",
@@ -16,7 +16,9 @@
     "python": ">=3.11",
     "entrypoint": "mini_browser_app.plugin:MiniBrowserAppPlugin",
     "pip_requires": [
-      "httpx>=0.24"
+      "httpx>=0.24",
+      "websockets>=11",
+      "mcp>=1.2"
     ]
   },
   "permissions": [
@@ -30,6 +32,9 @@
         "prefix": "/api/apps/mini-browser"
       }
     ],
+    "mcp": {
+      "reload_on_save": true
+    },
     "windows": [
       {
         "id": "mini-browser.main",
