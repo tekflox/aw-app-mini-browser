@@ -1,0 +1,2 @@
+mcp>=1.2  # mini_browser_browser.py's MCP tool wrapper, exercised by test_mcp_server.py
+pytest-asyncio>=0.23  # async MCP tool tests (real coroutines, not just FastAPI TestClient)
