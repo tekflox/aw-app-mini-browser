@@ -34,6 +34,13 @@
     "mcp": {
       "reload_on_save": true
     },
+    "skills": [
+      {
+        "id": "aw-mini-browser",
+        "path": "skills/aw-mini-browser/SKILL.md",
+        "description": "What Mini Browser is and how its MCP tools actually work — it pilots the separate shared aw-app-browser (noVNC) container over CDP, not its own iframe. Use whenever asked to pilot a browser for quick assisted navigation/debugging, or when a mini-browser MCP call errors with \"aw-app-browser not reachable over CDP\"."
+      }
+    ],
     "windows": [
       {
         "id": "mini-browser.main",
