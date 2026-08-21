@@ -19,6 +19,12 @@ runtime (``routes:register`` contribution point).
   like a screenshot back through this Tier-1 HTTP route instead, which shares
   the filesystem the agent runner sees. See the workspace KB memory
   "how-an-agent-sends-a-screenshot".
+* ``GET /view/screenshot`` — screenshots whatever URL this window's own
+  iframe last loaded (tracked in ``_last_url`` below, set by ``/proxy``),
+  or an explicit ``?url=`` override. Delegates the actual rendering to the
+  ``devctl`` app's ``POST /render/screenshot`` (a throwaway in-process
+  Playwright chromium, no side container) — this app declares that as a
+  hard dependency, see ``aw-app.json``'s ``dependencies``.
 
 Intentionally simple (regex-based HTML patch, not a full URL-rewriting
 proxy like Ultraviolet/Rammerhead) — good for static/simple sites, not
@@ -27,6 +33,7 @@ guaranteed for JS-heavy SPAs with anti-iframe checks.
 
 from __future__ import annotations
 
+import os
 import re
 
 import httpx
@@ -45,10 +52,17 @@ _BLOCKED_RESPONSE_HEADERS = {
     "transfer-encoding",
 }
 
+# The last URL a human navigated to via this window's own /proxy (i.e. what
+# the iframe is actually showing right now) — one workspace, one Mini
+# Browser window, so a single module-level value is enough; no per-session
+# tracking exists anywhere else in this app either.
+_last_url: str | None = None
+
 
 def build_routes(home_url: str) -> FastAPI:
     api = FastAPI()
     client = httpx.AsyncClient(follow_redirects=True, timeout=15.0)
+    devctl_base = f"http://127.0.0.1:{os.environ.get('AW_PORT', '9030')}/api/apps/devctl"
 
     @api.get("/view")
     async def view():
@@ -58,6 +72,9 @@ def build_routes(home_url: str) -> FastAPI:
     async def proxy(url: str = Query(..., description="Absolute http(s) URL to fetch")):
         if not re.match(r"^https?://", url, re.IGNORECASE):
             raise HTTPException(400, "url must start with http:// or https://")
+
+        global _last_url
+        _last_url = url
 
         try:
             upstream = await client.get(
@@ -123,5 +140,25 @@ def build_routes(home_url: str) -> FastAPI:
             await browser_client.navigate(body["url"])
             return {"ok": True, "url": body["url"]}
         return await _guard(go)
+
+    @api.get("/view/screenshot")
+    async def view_screenshot(url: str | None = Query(None, description="Defaults to the last URL loaded in this window")):
+        target = url or _last_url
+        if not target:
+            raise HTTPException(400, "nothing has been navigated to yet — pass ?url= explicitly")
+        api_key = os.environ.get("AW_WORKSPACE_API_KEY")
+        headers = {"X-Api-Key": api_key} if api_key else {}
+        try:
+            resp = await client.post(
+                f"{devctl_base}/render/screenshot",
+                json={"url": target},
+                headers=headers,
+                timeout=30.0,
+            )
+        except httpx.HTTPError as exc:
+            return JSONResponse(status_code=502, content={"error": "devctl", "detail": str(exc)})
+        if resp.status_code != 200:
+            return JSONResponse(status_code=502, content={"error": "devctl", "detail": resp.text})
+        return Response(content=resp.content, media_type="image/png")
 
     return api

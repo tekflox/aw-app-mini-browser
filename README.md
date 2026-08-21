@@ -14,6 +14,13 @@ Mini Browser adds a lightweight web browser window to an AW Workspace. It is des
   shared `aw-app-browser` container the same way `aw-app-devctl` does — the
   browser a human watches over noVNC and the one an agent drives are the same
   instance.
+- Also contributes `browser_screenshot_view`, a different kind of tool: it
+  screenshots this window's OWN iframe (whatever URL a human last typed into
+  it), with no side container at all — rendering is delegated to the
+  `devctl` app's throwaway in-process Playwright renderer (`POST
+  /render/screenshot`). Optional soft dependency: if `devctl` isn't
+  installed, every other Mini Browser feature keeps working, only this path
+  502s.
 
 ## Why Use It
 

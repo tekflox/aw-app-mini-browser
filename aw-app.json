@@ -63,6 +63,15 @@
     },
     "required": []
   },
-  "dependencies": {},
+  "dependencies": {
+    "apps": [
+      {
+        "id": "devctl",
+        "version": ">=0.10.0",
+        "required": false,
+        "reason": "GET /view/screenshot and the browser_screenshot_view MCP tool delegate to devctl's POST /render/screenshot (a side-container-free Playwright renderer). Without devctl installed, everything else in Mini Browser still works — only that one screenshot path 502s."
+      }
+    ]
+  },
   "migrations": {}
 }

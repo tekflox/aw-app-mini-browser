@@ -1,6 +1,6 @@
 ---
 name: aw-mini-browser
-description: What the Mini Browser app is and how its MCP tools (browser_navigate/click/type/screenshot/...) actually work — it does NOT drive its own iframe, it pilots the separate shared `aw-app-browser` (noVNC) container over CDP, the same instance a human watches in the "Browser" app window. Use whenever asked to pilot a browser for quick assisted navigation/debugging, when explaining what Mini Browser is, or when a `mini-browser` MCP call errors with "aw-app-browser not reachable over CDP".
+description: What the Mini Browser app is and how its MCP tools (browser_navigate/click/type/screenshot/...) actually work — it does NOT drive its own iframe, it pilots the separate shared `aw-app-browser` (noVNC) container over CDP, the same instance a human watches in the "Browser" app window. One exception — `browser_screenshot_view` screenshots the window's OWN iframe via the `devctl` app, no side container. Use whenever asked to pilot a browser for quick assisted navigation/debugging, when explaining what Mini Browser is, or when a `mini-browser` MCP call errors with "aw-app-browser not reachable over CDP".
 ---
 
 # aw-mini-browser — lightweight, human-visible browser piloting
@@ -9,16 +9,16 @@ Mini Browser (`aw-app-mini-browser`, Tier-1, in-process) bundles **two
 independent surfaces** that are easy to conflate — know which one you're
 touching.
 
-## 1. The window's own iframe — passive, not agent-piloted
+## 1. The window's own iframe — passive, EXCEPT for one screenshot path
 
 The Mini Browser window (`windows/main.json`) is a declarative `iframe`
 widget pointed at this app's own `GET /view` route
 (`mini_browser_app/viewer.py`), which is itself proxied through
 `mini_browser_app/routes.py` — a server-side proxy that strips
 `X-Frame-Options`/CSP so sites that would otherwise refuse to be framed
-still render inside the workspace. This is a URL-bar-and-iframe page viewer,
-nothing more. **No MCP tool controls this iframe's content** — a
-`browser_click` call does not click inside it.
+still render inside the workspace. This is a URL-bar-and-iframe page viewer.
+**No MCP tool clicks/types into this iframe's content** — but one tool CAN
+see it: `browser_screenshot_view` (see below).
 
 ## 2. The `mini-browser` MCP tool — pilots a *different*, shared browser
 
@@ -76,6 +76,47 @@ aw-workspace-cli start browser
 
 then retry the MCP call. Check `aw-workspace-cli apps browser --json` →
 `config.auto_start` if this keeps recurring; it defaults to off.
+
+## 3. `browser_screenshot_view` — screenshots the WINDOW's OWN iframe, no CDP, no container
+
+The one tool that breaks the "surface 1 is passive" rule above. It doesn't
+touch `aw-app-browser` at all — it screenshots whatever raw target URL the
+window's `/view` iframe last loaded (tracked server-side in
+`mini_browser_app/routes.py`'s `_last_url`, set every time `/proxy` fires),
+or an explicit `url` argument.
+
+Rendering is delegated to the **`devctl`** app's `POST
+/render/screenshot` — a throwaway, in-process Playwright chromium (ported
+behaviorally from `aw-app-whiteboard`'s `screenshot_url`) that renders one
+URL and closes. No side container, no CDP, no dependency on
+`aw-app-browser` being up. This is a **soft dependency**: declared in
+`aw-app.json`'s `dependencies.apps` as `required: false` — if `devctl`
+isn't installed, everything else in Mini Browser still works; only this one
+path 502s.
+
+The stdio MCP tool itself cannot fetch the PNG (confirmed live: the
+mcp-gateway container has no `AW_WORKSPACE_API_KEY`/`AW_WORKSPACE_API_URL` —
+those are minted only inside the workspace process and never propagated
+into a Tier-2 container's env; `aw-app-presentations` hit and documented
+the identical wall). So `browser_screenshot_view` just confirms the target
+and points at the real fetch route:
+
+```python
+import os, httpx
+from src.cli import local_client
+from src.api.workspace_api_key import ENV_VAR_NAME, HEADER_NAME
+
+url = local_client.base_url().rstrip('/') + '/api/apps/mini-browser/view/screenshot'
+key = os.environ.get(ENV_VAR_NAME) or local_client._read_env_value(ENV_VAR_NAME)
+png = httpx.get(url, headers={HEADER_NAME: key}, timeout=90).content   # image/png
+# or ?url=https://... to override the last-navigated URL
+```
+
+Because this renders the raw external URL directly (not mini-browser's own
+gated `/proxy` URL), there is no API key to leak to the target and no
+own-origin auth dance to get wrong — unlike `aw-app-whiteboard`'s version of
+this same function, which screenshots its OWN identity-gated pages and
+therefore does need one.
 
 ## Why this exists instead of just using Playwright
 

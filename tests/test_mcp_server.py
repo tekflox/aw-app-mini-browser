@@ -18,7 +18,10 @@ from mcp_server import mini_browser_browser as mb  # noqa: E402
 
 
 @pytest.mark.asyncio
-async def test_tool_names_match_devctl_parity():
+async def test_tool_names_match_devctl_parity_plus_view_screenshot():
+    # One deliberate departure from devctl's tool set: browser_screenshot_view
+    # targets this window's own /view (via devctl's side-container-free
+    # renderer), not the CDP-piloted aw-app-browser the rest of these drive.
     tools = await mb.mcp.list_tools()
     names = {t.name for t in tools}
     assert names == {
@@ -31,6 +34,7 @@ async def test_tool_names_match_devctl_parity():
         "browser_type",
         "browser_key",
         "browser_scroll",
+        "browser_screenshot_view",
     }
 
 

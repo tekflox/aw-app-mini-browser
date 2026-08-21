@@ -24,6 +24,17 @@ To fetch actual screenshot bytes, use this app's HTTP twin instead:
 ``GET /api/apps/mini-browser/browser/screenshot`` (a Tier-1 route, which
 shares the workspace's filesystem — see ``mini_browser_app/routes.py``).
 
+``browser_screenshot_view`` is the odd one out: it screenshots this
+window's OWN ``/view`` iframe (via the ``devctl`` app's side-container-free
+Playwright renderer), not the CDP-piloted ``aw-app-browser``. This stdio
+process was checked to have no reachable credentials for the workspace's
+own HTTP API (unlike ``aw-app-browser:9223``, which is plain container-to-
+container CDP, ``AW_WORKSPACE_API_KEY``/``AW_WORKSPACE_API_URL`` are minted
+only inside the workspace process and never reach this container — see
+``aw-app-presentations``'s abandoned stdio-callback attempt for the same
+wall), so it can only confirm the target and point the caller at
+``GET /api/apps/mini-browser/view/screenshot`` for the actual bytes.
+
 Run: `python -m mcp_server.mini_browser_browser` (stdio).
 """
 
@@ -63,6 +74,21 @@ async def browser_screenshot() -> str:
 async def browser_current() -> dict:
     """Current page title + URL."""
     return await client.current()
+
+
+@mcp.tool()
+async def browser_screenshot_view(url: str | None = None) -> dict:
+    """Screenshot the URL this window's OWN view last loaded (or ``url``
+    if given) — no side container, no CDP. This tool cannot fetch the PNG
+    itself (this stdio process has no credentials for the workspace's own
+    API — see the aw-mini-browser skill); it just confirms the target and
+    tells the caller where to fetch bytes from.
+    """
+    return {
+        "target": url or "(last URL loaded in this window's /view)",
+        "fetch_png_from": "GET /api/apps/mini-browser/view/screenshot"
+        + (f"?url={url}" if url else ""),
+    }
 
 
 @mcp.tool()

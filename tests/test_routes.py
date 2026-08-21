@@ -116,6 +116,72 @@ def test_browser_screenshot_cdp_failure_returns_502(client, monkeypatch):
     assert resp.json()["error"] == "browser"
 
 
+def test_view_screenshot_requires_a_url(client, monkeypatch):
+    monkeypatch.setattr(routes_mod, "_last_url", None)
+    resp = client.get("/view/screenshot")
+    assert resp.status_code == 400
+
+
+def test_view_screenshot_defaults_to_last_navigated_url(client, monkeypatch):
+    monkeypatch.setattr(routes_mod, "_last_url", "https://example.com/from-proxy")
+    seen = {}
+
+    async def fake_post(self, url, json=None, headers=None, timeout=None):
+        seen["url"], seen["json"] = url, json
+        return httpx.Response(200, headers={"content-type": "image/png"},
+                               content=b"\x89PNG\r\n\x1a\n-fake-",
+                               request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    resp = client.get("/view/screenshot")
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"\x89PNG")
+    assert seen["json"] == {"url": "https://example.com/from-proxy"}
+    assert seen["url"].endswith("/api/apps/devctl/render/screenshot")
+
+
+def test_view_screenshot_url_param_overrides_last_navigated(client, monkeypatch):
+    monkeypatch.setattr(routes_mod, "_last_url", "https://example.com/old")
+    seen = {}
+
+    async def fake_post(self, url, json=None, headers=None, timeout=None):
+        seen["json"] = json
+        return httpx.Response(200, headers={"content-type": "image/png"},
+                               content=b"\x89PNG-fake-", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    resp = client.get("/view/screenshot", params={"url": "https://example.com/new"})
+    assert resp.status_code == 200
+    assert seen["json"] == {"url": "https://example.com/new"}
+
+
+def test_view_screenshot_devctl_failure_returns_502(client, monkeypatch):
+    monkeypatch.setattr(routes_mod, "_last_url", "https://example.com/x")
+
+    async def fake_post(self, url, json=None, headers=None, timeout=None):
+        return httpx.Response(502, text="render failed", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    resp = client.get("/view/screenshot")
+    assert resp.status_code == 502
+    assert resp.json()["error"] == "devctl"
+
+
+def test_proxy_records_last_url(client, monkeypatch):
+    async def fake_get(self, url, headers=None):
+        return httpx.Response(200, headers={"content-type": "text/plain"},
+                               content=b"hi", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    monkeypatch.setattr(routes_mod, "_last_url", None)
+
+    client.get("/proxy", params={"url": "https://example.com/tracked"})
+    assert routes_mod._last_url == "https://example.com/tracked"
+
+
 def test_window_spec_endpoints_are_registered():
     """windows/main.json's iframe widget must reference a real route on
     this app's own FastAPI sub-app — a stale path here would 404 silently
