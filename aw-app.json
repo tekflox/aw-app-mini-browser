@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "mini-browser",
   "name": "Mini Browser",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Small in-app web browser \u2014 URL bar, back/forward/reload/home, an iframe, and a server-side proxy that strips X-Frame-Options/CSP so sites that would otherwise refuse to be framed can still be viewed inside AW. Also pilots the shared aw-app-browser container over CDP (navigate/click/type/eval/screenshot), ported from aw-app-devctl: a mini-browser-browser MCP tool wrapper is contributed for agents via mcp.json, with an HTTP twin under /browser/* for fetching screenshot bytes back onto the workspace filesystem.",
   "tier": "inprocess",
   "requires_ui_refresh": true,
@@ -69,7 +69,7 @@
         "id": "devctl",
         "version": ">=0.10.0",
         "required": false,
-        "reason": "GET /view/screenshot and the browser_screenshot_view MCP tool delegate to devctl's POST /render/screenshot (a side-container-free Playwright renderer). Without devctl installed, everything else in Mini Browser still works — only that one screenshot path 502s."
+        "reason": "GET /view/screenshot and the browser_screenshot_view MCP tool delegate to devctl's POST /render/screenshot (a side-container-free Playwright renderer). Without devctl installed, everything else in Mini Browser still works \u2014 only that one screenshot path 502s."
       }
     ]
   },
