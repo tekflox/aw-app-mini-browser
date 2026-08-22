@@ -65,6 +65,25 @@ anything. Without a valid, real identity token embedded by a legitimate
 `/view` load, `/bare/*` refuses to relay anything — so it does NOT
 become an open SSRF/abuse relay just because `auth_required` is off.
 
+**A THIRD, separate gate exists one hop further out — the workspace's
+edge tunnel** (`aw-backend/src/api/routes/workspace_tunnel_proxy.py`, a
+different repo entirely). It requires SOME credential-shaped
+header/cookie to be merely *present* before forwarding a request at
+all, checked before the request ever reaches this workspace's process —
+`credentials:"omit"` means no cookie gets there either, so even with
+`auth_required:false` correctly set, every real proxied request 401'd
+at the edge with a distinct `{"error":...}` body (not this app's own
+`{"detail":...}` shape — that's the tell for which layer actually
+rejected it). Confirmed by testing a garbage-but-present `X-Api-Key`
+(200, forwarded) vs. no header at all (401, edge). Fixed by patching
+`static/uv/bare-module3/index.mjs` to always send a **fixed placeholder**
+`X-Api-Key` — not the real key, which must never reach client-side JS —
+purely to satisfy the edge's presence check; see `VENDORED.md` for the
+full patch and reasoning. Do NOT "fix" this by routing traffic through
+`aw-app-proxy` — that app is an unrelated cookie-sync/CONNECT-tunnel
+helper for the piloted `aw-app-browser`, not an edge-auth bypass (checked
+live; no carve-out for it exists in `workspace_tunnel_proxy.py`).
+
 **Service Worker registration works inside this exact sandboxed iframe**
 (`sandbox="allow-scripts allow-forms allow-same-origin"` in
 `aw-workspace-ui/src/components/AppWindow.jsx`) — confirmed both by
@@ -73,6 +92,17 @@ blocks it is an *opaque* origin, and `allow-same-origin` prevents that)
 and by a live Playwright test. Don't re-derive or doubt this from a vague
 memory of "sandboxed iframes can't run service workers" — that rule does
 not exist for this token combination.
+
+**Don't wait on `navigator.serviceWorker.ready` in `startEngine()`** —
+it resolves only once a worker CONTROLS the current document, and
+`/view` is deliberately OUTSIDE the SW's own scope
+(`__uv$config.prefix`, i.e. `uv/service/`), so `.ready` hangs forever
+here even once the registration is genuinely `active`. Confirmed live
+(bootstrap stuck on "Starting engine…" indefinitely, no error, `.ready`
+never settling) despite `getRegistration()` already showing
+`active.state === "activated"`. `viewer.py` instead awaits the
+registration object's own `installing`/`waiting` → `statechange` →
+`"activated"` transition (or does nothing if `.active` is already set).
 
 **Dev panel**: a "Dev" button next to Go opens a slide-out side panel with
 two tabs — **Requests** (every proxied request/response, from the SW's

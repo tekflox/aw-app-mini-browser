@@ -13,21 +13,31 @@ avoid pulling in Wisp/wisp-server-python, whose only Python implementation
 is AGPL-3.0 and runs as its own process — neither fits "no new
 process/container, keep it simple".
 
-**Auth**: `bare-as-module3` hardcodes `credentials: "omit"` on every fetch
-to this backend — confirmed live, no cookie/Authorization header ever
-reaches here, so the workspace's normal ``IdentityGuard`` (cookie-based)
-can never pass. That forces this whole app's ``auth_required`` to
-``false`` in its settings (framework "app decides" mode — see
-``aw-app.json``'s ``config_schema``), which would make ``/bare/*`` a
-genuinely open relay (SSRF/abuse risk: anyone who finds the URL could use
-this workspace to make arbitrary outbound HTTP requests) if left
-unguarded. So the data endpoint re-verifies the SAME identity JWT the rest
-of the workspace already uses — ``decode_identity_jwt`` straight from
-``src.api.identity``, no new verification logic — carried as a URL path
-segment (the one thing this app DOES control: the base server URL passed
-to `bare-as-module3`'s constructor), since the header/cookie channels are
-closed off by the library. See ``routes.py``'s ``/view`` for where the
-token gets embedded.
+**Auth, two independent layers, easy to conflate:**
+
+1. **Workspace edge tunnel** (`aw-backend`'s `workspace_tunnel_proxy.py`,
+   a DIFFERENT repo): requires some credential-shaped header/cookie to be
+   merely PRESENT before forwarding a request at all — never checks
+   validity, that's deferred one hop in. `bare-as-module3` hardcodes
+   `credentials: "omit"` (confirmed live: zero cookie ever reaches this
+   backend), so `static/uv/bare-module3/index.mjs` is patched (see
+   `VENDORED.md`) to add a fixed, non-secret placeholder `X-Api-Key`
+   header — purely to satisfy that presence check. **This backend ignores
+   that header entirely.**
+2. **This app's own auth** (what actually matters): the workspace's
+   normal cookie-based ``IdentityGuard`` can never pass here either (same
+   `credentials:"omit"` problem, no cookie ever arrives), which forces
+   this whole app's ``auth_required`` to ``false`` in its settings
+   (framework "app decides" mode — see ``aw-app.json``'s
+   ``config_schema``). Left unguarded that would make ``/bare/*`` a
+   genuinely open relay (SSRF/abuse risk: anyone who finds the URL could
+   use this workspace to make arbitrary outbound HTTP requests) — so the
+   data endpoint below re-verifies the SAME real identity JWT the rest of
+   the workspace already uses (``decode_identity_jwt`` straight from
+   ``src.api.identity``, no new verification logic), carried as a URL
+   path segment — the one channel this app DOES control (the base server
+   URL passed to `bare-as-module3`'s constructor). See ``routes.py``'s
+   ``/view`` for where that token gets embedded.
 """
 
 from __future__ import annotations

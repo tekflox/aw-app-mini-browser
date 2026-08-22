@@ -242,8 +242,20 @@ VIEWER_SHELL = """<!DOCTYPE html>
       return;
     }
     try {
-      await navigator.serviceWorker.register('uv/sw.js', { scope: __uv$config.prefix });
-      await navigator.serviceWorker.ready;
+      var registration = await navigator.serviceWorker.register('uv/sw.js', { scope: __uv$config.prefix });
+      // NOT navigator.serviceWorker.ready — this page (/view) is OUTSIDE
+      // the SW's own scope (__uv$config.prefix) on purpose, so `.ready`
+      // (which waits for a worker controlling THIS document) never
+      // resolves here. Wait on the registration's own activation instead.
+      if (!registration.active){
+        await new Promise(function(resolve){
+          var w = registration.installing || registration.waiting;
+          if (!w) { resolve(); return; }
+          w.addEventListener('statechange', function(){
+            if (w.state === 'activated') resolve();
+          });
+        });
+      }
       navigator.serviceWorker.addEventListener('message', onSWMessage);
 
       var conn = new BareMux.BareMuxConnection('/api/apps/mini-browser/uv/baremux/worker.js');
