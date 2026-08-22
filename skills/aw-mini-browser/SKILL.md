@@ -1,6 +1,6 @@
 ---
 name: aw-mini-browser
-description: What the Mini Browser app is — its OWN window now runs a real rewriting proxy (a vendored Ultraviolet, service-worker-intercepted, backed by this app's own Bare Server v3) with a Dev panel (Requests/Console) next to Go, separate from the `mini-browser` MCP tools which pilot the different shared `aw-app-browser` (noVNC) container over CDP. Use whenever asked to pilot a browser for quick assisted navigation/debugging, explain what Mini Browser is, debug the proxy/dev-panel, or when a `mini-browser` MCP call errors with "aw-app-browser not reachable over CDP".
+description: What the Mini Browser app is — THREE independent piloting surfaces easy to conflate. (1) its OWN window runs a real rewriting proxy (vendored Ultraviolet + this app's Bare Server v3) with a Dev panel next to Go. (2) `browser_*` MCP tools pilot the separate shared `aw-app-browser` (noVNC) container over CDP. (3) `minibrowser_*` MCP tools are Playwright-style remote control of a REAL, already-open Mini Browser window via devctl's tab relay — not a piloted/headless browser at all. Use whenever asked to pilot a browser, explain what Mini Browser is, debug the proxy/dev-panel/pilot, or when a `mini-browser` MCP call errors.
 ---
 
 # aw-mini-browser — a real rewriting proxy in the window, CDP piloting via MCP
@@ -219,6 +219,50 @@ gated `/proxy` URL), there is no API key to leak to the target and no
 own-origin auth dance to get wrong — unlike `aw-app-whiteboard`'s version of
 this same function, which screenshots its OWN identity-gated pages and
 therefore does need one.
+
+## 4. `minibrowser_*` — Playwright-style pilot of a REAL, already-open window
+
+A FOURTH surface (well, third piloting mechanism — screenshot_view isn't
+really "piloting"), and the newest: `minibrowser_status`, `_navigate`,
+`_eval`, `_click`, `_type`. These do NOT touch `aw-app-browser` at all —
+they drive whatever Mini Browser window is *already open in a real user's
+own browser tab* (their laptop, wherever), via `devctl`'s tab relay
+(`POST /api/apps/devctl/eval`, `devctl_app/relay.py` in `tekflox/aw-app-devctl`) plus a
+`postMessage` bridge (`mini_browser_app/pilot.py` + `viewer.py`'s "Remote
+pilot" section).
+
+**Why this needs a relay at all, and why it's a THIRD mechanism, not a
+tweak to the other two**: devctl's tab relay reaches the TOP page (the AW
+workspace SPA, `workspace.<domain>`), but Mini Browser's `/view` is a
+same-window but DIFFERENT-ORIGIN iframe inside it (`api.workspace.<domain>`)
+— `iframe.contentDocument` throws (confirmed live), so the relay's JS
+can't just reach in directly. `postMessage` is the one channel that
+crosses that boundary safely, so `/view` runs its own listener
+(`window.addEventListener('message', ...)`, origin-checked against
+`location.origin` with the `api.` prefix stripped — no hardcoded domain,
+works on any workspace) and answers with `{type: 'mb-pilot-result', ...}`.
+
+**Command targets**: `navigate` drives the OUTER toolbar (`urlBar`/`frame.src`,
+same as a human typing a URL); `eval`/`click`/`type` target the INNER
+proxied page (`frame.contentWindow`/`frame.contentDocument` — same-origin
+now, because that's the whole point of the UV integration) — i.e. the
+actual website content, not the toolbar chrome.
+
+**Hard limitation, by design, not yet solved**: `minibrowser_navigate`
+etc. **cannot open the window for you** — if no Mini Browser window is
+open in ANY tab with devctl's `[dev]` toggle on, every one of these
+returns `502 {"error": "mini-browser window not found — ask the user to
+open it"}`. Auto-opening it would mean scripting the AW workspace SPA's
+own app-launch flow via the SAME relay — not attempted yet, listed as a
+pendência.
+
+**Same credential wall as `browser_screenshot_view`**: the stdio MCP
+process can't call these HTTP routes itself (mcp-gateway container has no
+workspace credentials — confirmed dead end, see that tool's own
+docstring), so `minibrowser_*` tools just confirm the target and point at
+`POST /api/apps/mini-browser/pilot/{navigate,eval,click,type}` /
+`GET .../pilot/status` for the agent to call directly with its own
+`X-Api-Key`.
 
 ## Why this exists instead of just using Playwright
 

@@ -264,6 +264,74 @@ VIEWER_SHELL = """<!DOCTYPE html>
     }
   }
 
+  // --- Remote pilot (postMessage) ---------------------------------------
+  // Lets an agent drive THIS window from outside — via devctl's tab relay,
+  // which reaches a real, already-open browser tab (not a piloted CDP
+  // browser) but can only ever talk to the TOP page, and the top page
+  // (the AW workspace SPA) is a different origin from this one (api.
+  // subdomain), so it can't call into our DOM directly. postMessage is the
+  // one channel that crosses that boundary safely. Origin-checked on
+  // receipt: derived from our OWN origin (strip a leading "api.") rather
+  // than hardcoded, so this works on any workspace's real domain.
+  var PARENT_ORIGIN = location.origin.replace('://api.', '://');
+
+  function pilotStatus(){
+    return { url: history[index] || null, status: status.textContent, engineReady: engineReady };
+  }
+
+  function pilotEval(js){
+    if (!frame.contentWindow) throw new Error('no page loaded');
+    // eslint-disable-next-line no-new-func
+    var fn = new Function('return (async () => { ' + js + ' })()');
+    return fn.call(frame.contentWindow);
+  }
+
+  function pilotClick(x, y){
+    var doc = frame.contentDocument;
+    if (!doc) throw new Error('no page loaded');
+    var el = doc.elementFromPoint(x, y);
+    if (!el) throw new Error('nothing at (' + x + ', ' + y + ')');
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function(type){
+      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: frame.contentWindow, clientX: x, clientY: y }));
+    });
+    return { ok: true, tag: el.tagName };
+  }
+
+  function pilotType(text){
+    var doc = frame.contentDocument;
+    if (!doc) throw new Error('no page loaded');
+    var el = doc.activeElement;
+    if (!el || el === doc.body) throw new Error('nothing focused — click a field first');
+    frame.contentWindow.focus();
+    doc.execCommand('insertText', false, text);
+    return { ok: true };
+  }
+
+  async function handlePilotCommand(msg){
+    switch (msg.cmd){
+      case 'status': return pilotStatus();
+      case 'navigate':
+        navigate(msg.url);
+        await new Promise(function(resolve){ frame.addEventListener('load', resolve, { once: true }); });
+        return pilotStatus();
+      case 'eval': return await pilotEval(msg.js);
+      case 'click': return pilotClick(msg.x, msg.y);
+      case 'type': return pilotType(msg.text);
+      default: throw new Error('unknown cmd: ' + msg.cmd);
+    }
+  }
+
+  window.addEventListener('message', function(e){
+    if (e.origin !== PARENT_ORIGIN) return;
+    var msg = e.data;
+    if (!msg || msg.type !== 'mb-pilot-cmd') return;
+    handlePilotCommand(msg).then(function(result){
+      e.source.postMessage({ type: 'mb-pilot-result', id: msg.id, result: result }, e.origin);
+    }).catch(function(err){
+      e.source.postMessage({ type: 'mb-pilot-result', id: msg.id, error: String((err && err.message) || err) }, e.origin);
+    });
+  });
+
   // --- Engine bootstrap ------------------------------------------------
   // Order matters (per Ultraviolet/bare-mux docs): register the SW, THEN
   // set the transport, THEN navigate — setting the transport after the SW

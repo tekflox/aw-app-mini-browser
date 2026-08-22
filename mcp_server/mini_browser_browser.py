@@ -35,6 +35,14 @@ only inside the workspace process and never reach this container — see
 wall), so it can only confirm the target and point the caller at
 ``GET /api/apps/mini-browser/view/screenshot`` for the actual bytes.
 
+``minibrowser_*`` tools (as opposed to the ``browser_*`` ones above) are a
+THIRD, different piloting surface — Playwright-style control of a REAL,
+already-open Mini Browser window in the user's own browser tab, via
+``devctl``'s tab relay + a ``postMessage`` bridge (``mini_browser_app/
+pilot.py``, ``/pilot/*`` routes). Same credential wall as
+``browser_screenshot_view``: these are thin pointers at the HTTP routes
+that do the actual work, not direct actors.
+
 Run: `python -m mcp_server.mini_browser_browser` (stdio).
 """
 
@@ -139,6 +147,75 @@ async def browser_scroll(dy: int = 300) -> str:
     """Wheel-scroll by dy pixels. Returns a screenshot path."""
     await client.scroll(dy)
     return _save_png(await client.screenshot())
+
+
+_PILOT_NOTE = (
+    "This stdio process has no credentials for the workspace's own HTTP "
+    "API, so it can't make this call itself — fetch this route yourself "
+    "with the workspace's usual X-Api-Key pattern (see the "
+    "how-an-agent-sends-a-screenshot workspace memory / aw-mini-browser skill)."
+)
+
+
+@mcp.tool()
+async def minibrowser_status() -> dict:
+    """Playwright-style pilot of a REAL, already-open Mini Browser window
+    (via devctl's tab relay — NOT the CDP-piloted aw-app-browser the
+    browser_* tools above use). Returns the target HTTP route for
+    fetching {url, status, engineReady} of that live window; 502 there
+    means no Mini Browser window is currently open in a connected tab.
+    """
+    return {"http_route": "GET /api/apps/mini-browser/pilot/status", "note": _PILOT_NOTE}
+
+
+@mcp.tool()
+async def minibrowser_navigate(url: str) -> dict:
+    """Navigate a REAL, already-open Mini Browser window to `url` (via
+    devctl's tab relay). The window must already be open in a connected
+    tab — this cannot open it for you. Fetch the target route to act.
+    """
+    return {
+        "http_route": "POST /api/apps/mini-browser/pilot/navigate",
+        "body": {"url": url},
+        "note": _PILOT_NOTE,
+    }
+
+
+@mcp.tool()
+async def minibrowser_eval(js: str) -> dict:
+    """Run JS inside the page currently loaded in a REAL, already-open
+    Mini Browser window's iframe (the proxied site itself, not the
+    toolbar) and return its value.
+    """
+    return {
+        "http_route": "POST /api/apps/mini-browser/pilot/eval",
+        "body": {"js": js},
+        "note": _PILOT_NOTE,
+    }
+
+
+@mcp.tool()
+async def minibrowser_click(x: float, y: float) -> dict:
+    """Click at CSS-pixel coordinates within a REAL, already-open Mini
+    Browser window's currently loaded page.
+    """
+    return {
+        "http_route": "POST /api/apps/mini-browser/pilot/click",
+        "body": {"x": x, "y": y},
+        "note": _PILOT_NOTE,
+    }
+
+
+@mcp.tool()
+async def minibrowser_type(text: str) -> dict:
+    """Type into whatever's focused (click a field first) in a REAL,
+    already-open Mini Browser window's currently loaded page.
+    """
+    return {
+        "http_route": "POST /api/apps/mini-browser/pilot/type",
+        "body": {"text": text},
+        "note": _PILOT_NOTE,
+    }
 
 
 if __name__ == "__main__":

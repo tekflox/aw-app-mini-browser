@@ -275,6 +275,54 @@ def test_bare_data_proxies_and_wraps_status(client, monkeypatch):
     assert remote_headers["x-upstream"] == "yes"
 
 
+def _fake_devctl_eval(devctl_response, monkeypatch):
+    async def fake_post(self, url, json=None, timeout=None):
+        assert url.endswith("/api/apps/devctl/eval")
+        return httpx.Response(200, json=devctl_response, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+
+def test_pilot_status_success(client, monkeypatch):
+    _fake_devctl_eval({
+        "ok": True,
+        "result": {"type": "mb-pilot-result", "id": "x", "result": {"url": "https://example.com", "status": "Ready", "engineReady": True}},
+    }, monkeypatch)
+
+    resp = client.get("/pilot/status")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "result": {"url": "https://example.com", "status": "Ready", "engineReady": True}}
+
+
+def test_pilot_navigate_requires_url(client):
+    resp = client.post("/pilot/navigate", json={})
+    assert resp.status_code == 400
+
+
+def test_pilot_no_window_open_returns_502(client, monkeypatch):
+    _fake_devctl_eval({
+        "ok": True,
+        "result": {"error": "mini-browser window not found — ask the user to open it"},
+    }, monkeypatch)
+
+    resp = client.post("/pilot/navigate", json={"url": "https://example.com"})
+    assert resp.status_code == 502
+    assert "not found" in resp.json()["error"]
+
+
+def test_pilot_no_connected_tab_returns_502(client, monkeypatch):
+    _fake_devctl_eval({"ok": False, "error": "no connected tab"}, monkeypatch)
+
+    resp = client.get("/pilot/status")
+    assert resp.status_code == 502
+    assert resp.json()["error"] == "no connected tab"
+
+
+def test_pilot_click_requires_coords(client):
+    resp = client.post("/pilot/click", json={"x": 10})
+    assert resp.status_code == 400
+
+
 def test_window_spec_endpoints_are_registered():
     """windows/main.json's iframe widget must reference a real route on
     this app's own FastAPI sub-app — a stale path here would 404 silently

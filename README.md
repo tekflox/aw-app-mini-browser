@@ -21,6 +21,15 @@ Mini Browser adds a lightweight web browser window to an AW Workspace. It is des
   /render/screenshot`). Optional soft dependency: if `devctl` isn't
   installed, every other Mini Browser feature keeps working, only this path
   502s.
+- `/view`'s iframe runs a real rewriting proxy (a vendored Ultraviolet +
+  this app's own Bare Server v3), not a header-stripping fetch — real
+  navigation, real cookies, correct CSS on JS-heavy sites. A "Dev" button
+  next to Go opens a Requests/Console side panel.
+- A third tool set, `minibrowser_status`/`_navigate`/`_eval`/`_click`/`_type`,
+  is Playwright-style remote control of a REAL, already-open Mini Browser
+  window in the user's own browser tab (via `devctl`'s tab relay) — not a
+  piloted or headless browser at all. Requires the window to already be
+  open somewhere with devctl's `[dev]` toggle on; can't open it for you.
 
 ## Why Use It
 

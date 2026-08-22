@@ -42,6 +42,12 @@ runtime (``routes:register`` contribution point).
   every proxied request. Written from the open spec, not vendored — see
   ``bare_server.py``'s docstring for why (Wisp's only Python server is
   AGPL and needs its own process; this doesn't).
+* ``/pilot/*`` (``pilot.py``) — Playwright-style remote control of a REAL,
+  already-open Mini Browser window (not a piloted/headless browser), via
+  ``devctl``'s tab relay + a ``postMessage`` bridge into ``/view``'s own
+  iframe. The ``minibrowser_*`` MCP tools are thin pointers at these
+  routes (same reason as ``view/screenshot`` above: the stdio MCP process
+  has no credentials for this workspace's own HTTP API).
 
 Ultraviolet + bare-mux are AGPL-3.0 / MIT respectively (see
 ``static/uv/licenses/``) — AGPL's network-copyleft clause is about
@@ -61,6 +67,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from . import pilot
 from .bare_server import build_bare_routes
 from .cdp import client as browser_client
 from .viewer import VIEWER_SHELL
@@ -201,5 +208,53 @@ def build_routes(home_url: str) -> FastAPI:
         if resp.status_code != 200:
             return JSONResponse(status_code=502, content={"error": "devctl", "detail": resp.text})
         return Response(content=resp.content, media_type="image/png")
+
+    def _pilot_response(raw: dict) -> Response:
+        """Unwraps devctl /eval's ``{ok, result, error}`` around this app's
+        own relay script's ``{error}`` (not-found/timeout) or viewer.py's
+        ``{result}``/``{error}`` (from the command handler itself) into one
+        consistent shape."""
+        if not raw.get("ok"):
+            return JSONResponse(status_code=502, content={"ok": False, "error": raw.get("error") or "devctl relay failed"})
+        inner = raw.get("result") if isinstance(raw.get("result"), dict) else {}
+        if "error" in inner:
+            return JSONResponse(status_code=502, content={"ok": False, "error": inner["error"]})
+        return JSONResponse(content={"ok": True, "result": inner.get("result")})
+
+    @api.get("/pilot/status")
+    async def pilot_status():
+        return _pilot_response(await pilot.run_pilot_command("{ cmd: 'status' }"))
+
+    @api.post("/pilot/navigate")
+    async def pilot_navigate(body: dict = Body(...)):
+        url = body.get("url")
+        if not url:
+            raise HTTPException(400, "url is required")
+        js = "{ cmd: 'navigate', url: " + pilot.js_str(url) + " }"
+        return _pilot_response(await pilot.run_pilot_command(js, timeout=20.0))
+
+    @api.post("/pilot/eval")
+    async def pilot_eval_route(body: dict = Body(...)):
+        js_code = body.get("js")
+        if not js_code:
+            raise HTTPException(400, "js is required")
+        js = "{ cmd: 'eval', js: " + pilot.js_str(js_code) + " }"
+        return _pilot_response(await pilot.run_pilot_command(js))
+
+    @api.post("/pilot/click")
+    async def pilot_click(body: dict = Body(...)):
+        x, y = body.get("x"), body.get("y")
+        if x is None or y is None:
+            raise HTTPException(400, "x and y are required")
+        js = "{ cmd: 'click', x: " + pilot.js_num(x) + ", y: " + pilot.js_num(y) + " }"
+        return _pilot_response(await pilot.run_pilot_command(js))
+
+    @api.post("/pilot/type")
+    async def pilot_type(body: dict = Body(...)):
+        text = body.get("text")
+        if text is None:
+            raise HTTPException(400, "text is required")
+        js = "{ cmd: 'type', text: " + pilot.js_str(text) + " }"
+        return _pilot_response(await pilot.run_pilot_command(js))
 
     return api
