@@ -280,10 +280,18 @@ VIEWER_SHELL = """<!DOCTYPE html>
   }
 
   function pilotEval(js){
-    if (!frame.contentWindow) throw new Error('no page loaded');
+    var w = frame.contentWindow;
+    if (!w) throw new Error('no page loaded');
+    // NOT this page's own `Function` — that always closes over THIS
+    // window's global scope regardless of .call()/.bind() target (a
+    // `this`-binding trick does not change which `document`/`window`
+    // free variables resolve to). Confirmed live: `document.title`
+    // returned "Mini Browser" (this page's own title) instead of the
+    // proxied page's. The proxied window's OWN Function constructor is
+    // required so `document`/`window` inside `js` resolve there instead.
     // eslint-disable-next-line no-new-func
-    var fn = new Function('return (async () => { ' + js + ' })()');
-    return fn.call(frame.contentWindow);
+    var fn = new w.Function('return (async () => { ' + js + ' })()');
+    return fn();
   }
 
   function pilotClick(x, y){
