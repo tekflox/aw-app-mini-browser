@@ -19,6 +19,22 @@ sys.path.insert(0, str(ROOT))
 
 from mini_browser_app import routes as routes_mod  # noqa: E402
 
+FAKE_TOKEN = "test-token"
+
+
+@pytest.fixture(autouse=True)
+def fake_identity(monkeypatch):
+    """Every route that checks identity (view(), bare_server's data
+    endpoint) re-imports decode_identity_jwt from src.api.identity at call
+    time, so patching the module attribute here reaches both — no need to
+    also patch the local re-export."""
+    import src.api.identity as identity_mod
+
+    def fake_decode(token):
+        return {"sub": "test-user"} if token == FAKE_TOKEN else None
+
+    monkeypatch.setattr(identity_mod, "decode_identity_jwt", fake_decode)
+
 
 @pytest.fixture
 def client():
@@ -27,11 +43,20 @@ def client():
 
 
 def test_view_shell_renders(client):
-    resp = client.get("/view")
+    resp = client.get("/view", cookies={"aw_id_jwt": FAKE_TOKEN})
     assert resp.status_code == 200
     assert "https://example.com" in resp.text
     assert "uv/sw.js" in resp.text
     assert "BareMuxConnection" in resp.text
+    assert FAKE_TOKEN in resp.text
+
+
+def test_view_requires_identity(client):
+    resp = client.get("/view")
+    assert resp.status_code == 401
+
+    resp = client.get("/view", cookies={"aw_id_jwt": "garbage"})
+    assert resp.status_code == 401
 
 
 def test_proxy_rejects_non_http_url(client):
@@ -208,14 +233,19 @@ def test_bare_info_endpoint(client):
     assert body["language"] == "Python"
 
 
+def test_bare_data_rejects_unknown_token(client):
+    resp = client.get("/bare/not-a-real-token/v3/", headers={"x-bare-url": "https://example.com/"})
+    assert resp.status_code == 401
+
+
 def test_bare_data_requires_bare_url_header(client):
-    resp = client.get("/bare/v3/")
+    resp = client.get(f"/bare/{FAKE_TOKEN}/v3/")
     assert resp.status_code == 400
     assert resp.json()["code"] == "MISSING_BARE_HEADER"
 
 
 def test_bare_data_rejects_invalid_headers_json(client):
-    resp = client.get("/bare/v3/", headers={"x-bare-url": "https://example.com/", "x-bare-headers": "not-json"})
+    resp = client.get(f"/bare/{FAKE_TOKEN}/v3/", headers={"x-bare-url": "https://example.com/", "x-bare-headers": "not-json"})
     assert resp.status_code == 400
     assert resp.json()["code"] == "INVALID_BARE_HEADER"
 
@@ -232,7 +262,7 @@ def test_bare_data_proxies_and_wraps_status(client, monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "request", fake_request)
 
     resp = client.get(
-        "/bare/v3/",
+        f"/bare/{FAKE_TOKEN}/v3/",
         headers={"x-bare-url": "https://example.com/", "x-bare-headers": json.dumps({"Accept": "*/*"})},
     )
     assert resp.status_code == 200

@@ -1,6 +1,14 @@
 """Browser UI shell served at ``GET /view`` (mounted under
 ``/api/apps/mini-browser`` by ``routes.py``). ``__HOME_URL__`` is
-substituted with the app's configured ``home_url`` before serving.
+substituted with the app's configured ``home_url``, and
+``__IDENTITY_TOKEN__`` with the caller's own raw identity JWT (extracted
+and re-verified by ``routes.py::view()``), before serving.
+
+This app's ``auth_required`` config MUST be ``false`` for this route to
+be reachable at all under this design — ``view()`` enforces auth itself
+(see ``bare_server.py``'s docstring for the full why). If Mini Browser
+stops loading with a 401 after a fresh install, check
+Workspace → Apps → mini-browser → settings → "Authentication required".
 
 Note: no ``<form>`` submission — this shell may itself be rendered inside a
 sandboxed iframe (the declarative window's ``iframe`` widget), and a
@@ -95,6 +103,11 @@ VIEWER_SHELL = """<!DOCTYPE html>
 <script>
 (function(){
   var HOME = "__HOME_URL__";
+  // The same identity JWT that got this page served — bare-as-module3
+  // hardcodes credentials:"omit" on its own fetches, so it's re-verified
+  // server-side (bare_server.py) as a URL path segment instead of a
+  // cookie/header, since that's the one thing this app controls.
+  var IDENTITY_TOKEN = "__IDENTITY_TOKEN__";
   var frame = document.getElementById('frame');
   var urlBar = document.getElementById('url-bar');
   var status = document.getElementById('status');
@@ -233,9 +246,9 @@ VIEWER_SHELL = """<!DOCTYPE html>
       await navigator.serviceWorker.ready;
       navigator.serviceWorker.addEventListener('message', onSWMessage);
 
-      var conn = new BareMux.BareMuxConnection('uv/baremux/worker.js');
+      var conn = new BareMux.BareMuxConnection('/api/apps/mini-browser/uv/baremux/worker.js');
       await conn.setTransport('/api/apps/mini-browser/uv/bare-module3/index.mjs', [
-        location.origin + '/api/apps/mini-browser/bare/'
+        location.origin + '/api/apps/mini-browser/bare/' + encodeURIComponent(IDENTITY_TOKEN) + '/'
       ]);
 
       engineReady = true;

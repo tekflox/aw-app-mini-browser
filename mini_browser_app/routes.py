@@ -57,7 +57,7 @@ import re
 from pathlib import Path
 
 import httpx
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -92,8 +92,16 @@ def build_routes(home_url: str) -> FastAPI:
     api.mount("/bare", build_bare_routes())
 
     @api.get("/view")
-    async def view():
-        return HTMLResponse(content=VIEWER_SHELL.replace("__HOME_URL__", home_url))
+    async def view(request: Request):
+        from src.api.identity import COOKIE_NAME, decode_identity_jwt
+
+        auth_header = request.headers.get("authorization", "")
+        token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else request.cookies.get(COOKIE_NAME, "")
+        if not token or not decode_identity_jwt(token):
+            raise HTTPException(401, "unauthorized")
+
+        html = VIEWER_SHELL.replace("__HOME_URL__", home_url).replace("__IDENTITY_TOKEN__", token)
+        return HTMLResponse(content=html)
 
     @api.get("/track-nav")
     async def track_nav(url: str = Query(..., description="URL the UV-powered /view just navigated to")):

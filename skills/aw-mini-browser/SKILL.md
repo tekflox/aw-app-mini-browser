@@ -33,6 +33,38 @@ uses it**. `view/screenshot`'s `_last_url` bookkeeping now comes from a
 new `GET /track-nav` ping fired fire-and-forget by `/view`'s own JS on
 every navigation, not from `/proxy` anymore.
 
+**REQUIRED post-install step: `auth_required: false`.** Confirmed live
+with a real logged-in session: `bare-as-module3` (the vendored transport)
+hardcodes `credentials: "omit"` on every fetch to the Bare Server — no
+cookie, no `Authorization` header, ever reaches `bare_server.py`, no
+matter what. The workspace's normal cookie-based `IdentityGuard` can
+therefore never pass for `/bare/*`, so this app's `auth_required` config
+must be `false` (Workspace → Apps → mini-browser → settings →
+"Authentication required" toggle off) for navigation to work AT ALL — a
+fresh install 401s at `/bare/*` and Mini Browser hangs on "Starting
+engine…" forever until this is flipped. This is NOT "no auth" for the
+app as a whole: `routes.py::view()` and `bare_server.py`'s data endpoint
+each enforce identity themselves in this mode (`view()` 401s without a
+valid cookie/bearer; the Bare Server's data endpoint 401s without a
+valid token in the URL path — see below). Only `/uv/*` (static JS,
+harmless) and `/bare/`'s bare info endpoint are genuinely open.
+
+**How the Bare Server stays closed to strangers despite no cookie
+reaching it**: since the header/cookie channel is closed off by the
+library, the ONE thing this app still controls is the *base server URL*
+it hands to `bare-as-module3`'s constructor. `routes.py::view()` extracts
+the caller's own raw identity JWT (same `aw_id_jwt` cookie / `Bearer`
+header the rest of the workspace already uses — re-verified via
+`decode_identity_jwt` straight from `src.api.identity`, no new
+verification logic invented) and embeds it into the page
+(`__IDENTITY_TOKEN__` in `viewer.py`). The page then calls
+`setTransport(..., [origin + '/bare/' + token + '/'])`, so every
+subsequent Bare Server request lands on `/bare/{token}/v3/`, and
+`bare_server.py`'s data endpoint re-verifies that token before doing
+anything. Without a valid, real identity token embedded by a legitimate
+`/view` load, `/bare/*` refuses to relay anything — so it does NOT
+become an open SSRF/abuse relay just because `auth_required` is off.
+
 **Service Worker registration works inside this exact sandboxed iframe**
 (`sandbox="allow-scripts allow-forms allow-same-origin"` in
 `aw-workspace-ui/src/components/AppWindow.jsx`) — confirmed both by

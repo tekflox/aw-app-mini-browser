@@ -12,6 +12,22 @@ Written from scratch against the open spec (not vendored) specifically to
 avoid pulling in Wisp/wisp-server-python, whose only Python implementation
 is AGPL-3.0 and runs as its own process — neither fits "no new
 process/container, keep it simple".
+
+**Auth**: `bare-as-module3` hardcodes `credentials: "omit"` on every fetch
+to this backend — confirmed live, no cookie/Authorization header ever
+reaches here, so the workspace's normal ``IdentityGuard`` (cookie-based)
+can never pass. That forces this whole app's ``auth_required`` to
+``false`` in its settings (framework "app decides" mode — see
+``aw-app.json``'s ``config_schema``), which would make ``/bare/*`` a
+genuinely open relay (SSRF/abuse risk: anyone who finds the URL could use
+this workspace to make arbitrary outbound HTTP requests) if left
+unguarded. So the data endpoint re-verifies the SAME identity JWT the rest
+of the workspace already uses — ``decode_identity_jwt`` straight from
+``src.api.identity``, no new verification logic — carried as a URL path
+segment (the one thing this app DOES control: the base server URL passed
+to `bare-as-module3`'s constructor), since the header/cookie channels are
+closed off by the library. See ``routes.py``'s ``/view`` for where the
+token gets embedded.
 """
 
 from __future__ import annotations
@@ -19,7 +35,7 @@ from __future__ import annotations
 import json
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 _BASE_PASS_HEADERS = {"content-encoding", "content-length", "last-modified"}
@@ -52,10 +68,15 @@ def build_bare_routes() -> FastAPI:
         })
 
     @api.api_route(
-        "/v3/",
+        "/{token}/v3/",
         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
     )
-    async def data(request: Request):
+    async def data(token: str, request: Request):
+        from src.api.identity import decode_identity_jwt
+
+        if not decode_identity_jwt(token):
+            raise HTTPException(401, "unauthorized")
+
         bare_url = request.headers.get("x-bare-url")
         if not bare_url:
             return JSONResponse(
