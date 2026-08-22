@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "mini-browser",
   "name": "Mini Browser",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "In-app web browser with a real rewriting proxy \u2014 a vendored Ultraviolet (AGPL-3.0) intercepted client-side by a service worker, backed by this app's own TompHTTP Bare Server v3 (written from the open spec, no Node/Wisp/new process). Ships a dev panel (Requests/Console) next to the Go button. Also pilots the shared aw-app-browser container over CDP (navigate/click/type/eval/screenshot), ported from aw-app-devctl: a mini-browser-browser MCP tool wrapper is contributed for agents via mcp.json, with an HTTP twin under /browser/* for fetching screenshot bytes back onto the workspace filesystem.",
   "tier": "inprocess",
   "requires_ui_refresh": true,
