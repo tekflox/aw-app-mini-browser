@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
+import types
 from pathlib import Path
 
 import httpx
@@ -17,23 +18,25 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from mini_browser_app import routes as routes_mod  # noqa: E402
-
 FAKE_TOKEN = "test-token"
 
+# view() and bare_server.py's data endpoint both do
+# `from src.api.identity import ...` at call time — real workspace core,
+# not installed in this repo's own isolated test venv (CI has no
+# /opt/aw-workspace on its path, and never should: this repo has to stay
+# independently testable). Stub the module in sys.modules BEFORE anything
+# imports it, rather than monkeypatching an attribute that doesn't exist
+# here in the first place.
+_fake_identity = types.ModuleType("src.api.identity")
+_fake_identity.COOKIE_NAME = "aw_id_jwt"
+_fake_identity.decode_identity_jwt = lambda token: (
+    {"sub": "test-user"} if token == FAKE_TOKEN else None
+)
+sys.modules.setdefault("src", types.ModuleType("src"))
+sys.modules.setdefault("src.api", types.ModuleType("src.api"))
+sys.modules["src.api.identity"] = _fake_identity
 
-@pytest.fixture(autouse=True)
-def fake_identity(monkeypatch):
-    """Every route that checks identity (view(), bare_server's data
-    endpoint) re-imports decode_identity_jwt from src.api.identity at call
-    time, so patching the module attribute here reaches both — no need to
-    also patch the local re-export."""
-    import src.api.identity as identity_mod
-
-    def fake_decode(token):
-        return {"sub": "test-user"} if token == FAKE_TOKEN else None
-
-    monkeypatch.setattr(identity_mod, "decode_identity_jwt", fake_decode)
+from mini_browser_app import routes as routes_mod  # noqa: E402
 
 
 @pytest.fixture
