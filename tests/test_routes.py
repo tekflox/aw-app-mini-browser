@@ -36,6 +36,17 @@ sys.modules.setdefault("src", types.ModuleType("src"))
 sys.modules.setdefault("src.api", types.ModuleType("src.api"))
 sys.modules["src.api.identity"] = _fake_identity
 
+# bare_server.py's WS tunnel route does `import websockets` lazily inside
+# the function under test (same reasoning as above: CI's baseline install
+# doesn't include app-specific pip_requires). Stub it when the real package
+# isn't present so the WS test can monkeypatch `.connect` either way.
+try:
+    import websockets  # noqa: F401
+except ModuleNotFoundError:
+    _fake_websockets = types.ModuleType("websockets")
+    _fake_websockets.connect = None
+    sys.modules["websockets"] = _fake_websockets
+
 from mini_browser_app import routes as routes_mod  # noqa: E402
 
 
