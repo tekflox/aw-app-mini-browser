@@ -30,7 +30,8 @@ def test_view_shell_renders(client):
     resp = client.get("/view")
     assert resp.status_code == 200
     assert "https://example.com" in resp.text
-    assert "proxy?url=" in resp.text
+    assert "uv/sw.js" in resp.text
+    assert "BareMuxConnection" in resp.text
 
 
 def test_proxy_rejects_non_http_url(client):
@@ -170,6 +171,13 @@ def test_view_screenshot_devctl_failure_returns_502(client, monkeypatch):
     assert resp.json()["error"] == "devctl"
 
 
+def test_track_nav_records_last_url(client, monkeypatch):
+    monkeypatch.setattr(routes_mod, "_last_url", None)
+    resp = client.get("/track-nav", params={"url": "https://example.com/via-uv"})
+    assert resp.status_code == 200
+    assert routes_mod._last_url == "https://example.com/via-uv"
+
+
 def test_proxy_records_last_url(client, monkeypatch):
     async def fake_get(self, url, headers=None):
         return httpx.Response(200, headers={"content-type": "text/plain"},
@@ -180,6 +188,58 @@ def test_proxy_records_last_url(client, monkeypatch):
 
     client.get("/proxy", params={"url": "https://example.com/tracked"})
     assert routes_mod._last_url == "https://example.com/tracked"
+
+
+def test_uv_static_files_served(client):
+    resp = client.get("/uv/uv.config.js")
+    assert resp.status_code == 200
+    assert b"prefix" in resp.content
+
+    resp = client.get("/uv/sw.js")
+    assert resp.status_code == 200
+    assert b"uv.bundle.js" in resp.content
+
+
+def test_bare_info_endpoint(client):
+    resp = client.get("/bare/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["versions"] == ["v3"]
+    assert body["language"] == "Python"
+
+
+def test_bare_data_requires_bare_url_header(client):
+    resp = client.get("/bare/v3/")
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "MISSING_BARE_HEADER"
+
+
+def test_bare_data_rejects_invalid_headers_json(client):
+    resp = client.get("/bare/v3/", headers={"x-bare-url": "https://example.com/", "x-bare-headers": "not-json"})
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "INVALID_BARE_HEADER"
+
+
+def test_bare_data_proxies_and_wraps_status(client, monkeypatch):
+    async def fake_request(self, method, url, headers=None, content=None):
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/plain", "x-upstream": "yes"},
+            content=b"hello from upstream",
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", fake_request)
+
+    resp = client.get(
+        "/bare/v3/",
+        headers={"x-bare-url": "https://example.com/", "x-bare-headers": json.dumps({"Accept": "*/*"})},
+    )
+    assert resp.status_code == 200
+    assert resp.content == b"hello from upstream"
+    assert resp.headers["x-bare-status"] == "200"
+    remote_headers = json.loads(resp.headers["x-bare-headers"])
+    assert remote_headers["x-upstream"] == "yes"
 
 
 def test_window_spec_endpoints_are_registered():

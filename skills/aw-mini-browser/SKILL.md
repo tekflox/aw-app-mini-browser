@@ -1,23 +1,63 @@
 ---
 name: aw-mini-browser
-description: What the Mini Browser app is and how its MCP tools (browser_navigate/click/type/screenshot/...) actually work — it does NOT drive its own iframe, it pilots the separate shared `aw-app-browser` (noVNC) container over CDP, the same instance a human watches in the "Browser" app window. One exception — `browser_screenshot_view` screenshots the window's OWN iframe via the `devctl` app, no side container. Use whenever asked to pilot a browser for quick assisted navigation/debugging, when explaining what Mini Browser is, or when a `mini-browser` MCP call errors with "aw-app-browser not reachable over CDP".
+description: What the Mini Browser app is — its OWN window now runs a real rewriting proxy (a vendored Ultraviolet, service-worker-intercepted, backed by this app's own Bare Server v3) with a Dev panel (Requests/Console) next to Go, separate from the `mini-browser` MCP tools which pilot the different shared `aw-app-browser` (noVNC) container over CDP. Use whenever asked to pilot a browser for quick assisted navigation/debugging, explain what Mini Browser is, debug the proxy/dev-panel, or when a `mini-browser` MCP call errors with "aw-app-browser not reachable over CDP".
 ---
 
-# aw-mini-browser — lightweight, human-visible browser piloting
+# aw-mini-browser — a real rewriting proxy in the window, CDP piloting via MCP
 
 Mini Browser (`aw-app-mini-browser`, Tier-1, in-process) bundles **two
 independent surfaces** that are easy to conflate — know which one you're
-touching.
+touching. As of the Ultraviolet integration, surface 1 stopped being
+passive — read this before assuming the old "just a header-stripping
+iframe" model still holds.
 
-## 1. The window's own iframe — passive, EXCEPT for one screenshot path
+## 1. The window's own iframe — a real rewriting proxy, not just a stripped fetch
 
 The Mini Browser window (`windows/main.json`) is a declarative `iframe`
 widget pointed at this app's own `GET /view` route
-(`mini_browser_app/viewer.py`), which is itself proxied through
-`mini_browser_app/routes.py` — a server-side proxy that strips
-`X-Frame-Options`/CSP so sites that would otherwise refuse to be framed
-still render inside the workspace. This is a URL-bar-and-iframe page viewer.
-**No MCP tool clicks/types into this iframe's content** — but one tool CAN
+(`mini_browser_app/viewer.py`). That page now runs a vendored
+**Ultraviolet** (`mini_browser_app/static/uv/`, AGPL-3.0 — see
+`static/uv/VENDORED.md`) intercepted client-side by a Service Worker
+(`static/uv/sw.js`), backed by this app's own hand-written **Bare Server
+v3** (`mini_browser_app/bare_server.py`, written from the open
+[TompHTTP spec](https://github.com/tomphttp/specifications), no Node/Wisp,
+no new process). This means real navigation — the proxied page's own JS
+runs with a genuinely non-opaque origin check passing (no more Google
+homepage falling back to unstyled buttons because `location.href` didn't
+match), and cookies persist (Ultraviolet manages its own per-origin cookie
+jar in IndexedDB inside the service worker).
+
+The old `/proxy` route (regex HTML patch + `<base>` tag, "not guaranteed
+for JS-heavy SPAs") still exists in `routes.py` but **`/view` no longer
+uses it**. `view/screenshot`'s `_last_url` bookkeeping now comes from a
+new `GET /track-nav` ping fired fire-and-forget by `/view`'s own JS on
+every navigation, not from `/proxy` anymore.
+
+**Service Worker registration works inside this exact sandboxed iframe**
+(`sandbox="allow-scripts allow-forms allow-same-origin"` in
+`aw-workspace-ui/src/components/AppWindow.jsx`) — confirmed both by
+reading the SW spec's actual `Register` algorithm (the only thing that
+blocks it is an *opaque* origin, and `allow-same-origin` prevents that)
+and by a live Playwright test. Don't re-derive or doubt this from a vague
+memory of "sandboxed iframes can't run service workers" — that rule does
+not exist for this token combination.
+
+**Dev panel**: a "Dev" button next to Go opens a slide-out side panel with
+two tabs — **Requests** (every proxied request/response, from the SW's
+`request`/`response` events relayed via `postMessage`) and **Console**
+(console.log/warn/error from the proxied page, hooked by
+`static/uv/devpanel-inject.js`, which Ultraviolet injects into every
+proxied page via `uv.config.js`'s `inject` option). **No Cookies tab** —
+reading Ultraviolet's internal per-origin cookie jar would mean forking
+`uv.sw.js` (against the point of vendoring it unmodified) or a more
+involved message-relay; scoped out, listed as a pendência.
+
+**Known gap: no WebSocket tunnel.** The Bare Server v3 spec's WS-tunnel
+handshake isn't implemented in `bare_server.py` yet — a proxied page that
+opens a raw WebSocket (chat apps, live dashboards) will fail. Regular
+HTTP navigation/fetch/XHR works fine.
+
+**No MCP tool clicks/types into this iframe's content** — one tool CAN
 see it: `browser_screenshot_view` (see below).
 
 ## 2. The `mini-browser` MCP tool — pilots a *different*, shared browser
