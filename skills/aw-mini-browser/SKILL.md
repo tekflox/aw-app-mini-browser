@@ -114,10 +114,12 @@ reading Ultraviolet's internal per-origin cookie jar would mean forking
 `uv.sw.js` (against the point of vendoring it unmodified) or a more
 involved message-relay; scoped out, listed as a pendência.
 
-**Known gap: no WebSocket tunnel.** The Bare Server v3 spec's WS-tunnel
-handshake isn't implemented in `bare_server.py` yet — a proxied page that
-opens a raw WebSocket (chat apps, live dashboards) will fail. Regular
-HTTP navigation/fetch/XHR works fine.
+**WebSocket tunnel works.** `bare_server.py` implements the Bare Server v3
+WS-tunnel handshake on the same `/{token}/v3/` path as the HTTP data
+endpoint (Starlette dispatches HTTP vs WS by scope type, so the two
+coexist) — a proxied page's raw `new WebSocket(...)` (chat apps, live
+dashboards) tunnels through to the real remote via the `websockets`
+library, bidirectionally, same identity-JWT check as the HTTP path.
 
 **No MCP tool clicks/types into this iframe's content** — one tool CAN
 see it: `browser_screenshot_view` (see below).

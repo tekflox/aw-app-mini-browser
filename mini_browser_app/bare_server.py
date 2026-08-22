@@ -3,10 +3,10 @@ Ultraviolet client (via the `bare-as-module3` transport, see
 ``static/uv/bare-module3/``) actually talks to for every proxied request.
 
 Spec: https://github.com/tomphttp/specifications/blob/master/BareServerV3.md
-Implements the subset this app's traffic needs: the info endpoint and the
-plain HTTP data endpoint. No WebSocket tunnel yet (see the aw-mini-browser
-skill's pendências list) — a proxied page whose JS opens a raw WebSocket
-will fail; regular HTTP navigation/fetch/XHR works.
+Implements the subset this app's traffic needs: the info endpoint, the
+plain HTTP data endpoint, and a WebSocket tunnel (same `/{token}/v3/` path —
+Starlette dispatches HTTP and WS scopes to their own handlers, so the two
+coexist) so a proxied page's raw `new WebSocket(...)` calls work too.
 
 Written from scratch against the open spec (not vendored) specifically to
 avoid pulling in Wisp/wisp-server-python, whose only Python implementation
@@ -42,10 +42,11 @@ process/container, keep it simple".
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
 
 _BASE_PASS_HEADERS = {"content-encoding", "content-length", "last-modified"}
@@ -141,5 +142,79 @@ def build_bare_routes() -> FastAPI:
 
         status = upstream.status_code if upstream.status_code in pass_status else 200
         return Response(content=upstream.content, status_code=status, headers=response_headers)
+
+    @api.websocket("/{token}/v3/")
+    async def ws_tunnel(websocket: WebSocket, token: str):
+        from src.api.identity import decode_identity_jwt
+
+        if not decode_identity_jwt(token):
+            await websocket.close(code=4401)
+            return
+
+        await websocket.accept()
+
+        try:
+            handshake = json.loads(await websocket.receive_text())
+            if handshake.get("type") != "connect":
+                raise ValueError("first message must be type=connect")
+            remote_url = handshake["remote"]
+            protocols = handshake.get("protocols") or []
+            fwd_headers = handshake.get("headers") or {}
+        except Exception as exc:
+            await websocket.close(code=1002, reason=str(exc)[:120])
+            return
+
+        import websockets
+
+        try:
+            remote_ws = await websockets.connect(
+                remote_url,
+                subprotocols=protocols or None,
+                additional_headers=fwd_headers,
+                open_timeout=15,
+            )
+        except Exception as exc:
+            await websocket.close(code=1011, reason=f"connect failed: {exc}"[:120])
+            return
+
+        await websocket.send_text(json.dumps({
+            "type": "open",
+            "protocol": remote_ws.subprotocol or "",
+            "setCookies": [],
+        }))
+
+        async def client_to_remote():
+            try:
+                while True:
+                    msg = await websocket.receive()
+                    if msg["type"] == "websocket.disconnect":
+                        break
+                    if msg.get("text") is not None:
+                        await remote_ws.send(msg["text"])
+                    elif msg.get("bytes") is not None:
+                        await remote_ws.send(msg["bytes"])
+            except WebSocketDisconnect:
+                pass
+            except Exception:
+                pass
+            finally:
+                await remote_ws.close()
+
+        async def remote_to_client():
+            try:
+                async for message in remote_ws:
+                    if isinstance(message, str):
+                        await websocket.send_text(message)
+                    else:
+                        await websocket.send_bytes(message)
+            except Exception:
+                pass
+            finally:
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
+
+        await asyncio.gather(client_to_remote(), remote_to_client(), return_exceptions=True)
 
     return api

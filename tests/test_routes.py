@@ -275,6 +275,70 @@ def test_bare_data_proxies_and_wraps_status(client, monkeypatch):
     assert remote_headers["x-upstream"] == "yes"
 
 
+def test_bare_ws_rejects_unknown_token(client):
+    with pytest.raises(Exception):
+        with client.websocket_connect("/bare/not-a-real-token/v3/"):
+            pass
+
+
+def test_bare_ws_rejects_non_connect_first_message(client):
+    with client.websocket_connect(f"/bare/{FAKE_TOKEN}/v3/") as ws:
+        ws.send_text(json.dumps({"type": "not-connect"}))
+        with pytest.raises(Exception):
+            ws.receive_text()
+
+
+class _FakeRemoteWS:
+    def __init__(self, to_client):
+        self.subprotocol = None
+        self.sent = []
+        self.closed = False
+        self._to_client = list(to_client)
+
+    async def send(self, data):
+        self.sent.append(data)
+
+    async def close(self):
+        self.closed = True
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._to_client:
+            return self._to_client.pop(0)
+        raise StopAsyncIteration
+
+
+def test_bare_ws_tunnels_messages_bidirectionally(client, monkeypatch):
+    import websockets
+
+    fake = _FakeRemoteWS(["hello-from-remote"])
+
+    async def fake_connect(url, subprotocols=None, additional_headers=None, open_timeout=None):
+        assert url == "wss://example.com/socket"
+        return fake
+
+    monkeypatch.setattr(websockets, "connect", fake_connect)
+
+    with client.websocket_connect(f"/bare/{FAKE_TOKEN}/v3/") as ws:
+        ws.send_text(json.dumps({
+            "type": "connect",
+            "remote": "wss://example.com/socket",
+            "protocols": [],
+            "headers": {},
+        }))
+        open_msg = json.loads(ws.receive_text())
+        assert open_msg["type"] == "open"
+
+        assert ws.receive_text() == "hello-from-remote"
+
+        ws.send_text("ping-from-client")
+
+    assert fake.sent == ["ping-from-client"]
+    assert fake.closed
+
+
 def _fake_devctl_eval(devctl_response, monkeypatch):
     async def fake_post(self, url, json=None, timeout=None):
         assert url.endswith("/api/apps/devctl/eval")
