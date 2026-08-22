@@ -1,4 +1,10 @@
-// Injected into every proxied page (via uv.config.js's `inject` hook).
+// The READABLE source of the script inlined (minified by hand, kept in
+// sync manually — no build step) into uv.config.js's `inject.html`. NOT
+// itself fetched at runtime: a `<script src>` pointing here resolves
+// against the PROXIED page's own rewritten origin (e.g. google.com), not
+// ours, and 404s there — confirmed live. Edit here, then re-minify into
+// uv.config.js by hand.
+//
 // Hooks console.log/warn/error and relays each call to the service worker,
 // which broadcasts it on to the toolbar page's dev panel. Best-effort only
 // — if there's no controlling service worker yet (first navigation before

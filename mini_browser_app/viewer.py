@@ -52,6 +52,9 @@ VIEWER_SHELL = """<!DOCTYPE html>
   #frame { width: 100%; height: 100%; border: 0; display: block; }
   #devpanel { width: 380px; flex-shrink: 0; background: #202124; border-left: 1px solid #1a1b1e; display: none; flex-direction: column; color: #e3e5e8; }
   #devpanel.open { display: flex; }
+  #dp-resize { width: 5px; flex-shrink: 0; cursor: col-resize; background: transparent; display: none; }
+  #dp-resize.open { display: block; }
+  #dp-resize:hover, #dp-resize.dragging { background: #5865f2; }
   .dp-tabs { display: flex; border-bottom: 1px solid #1a1b1e; }
   .dp-tab { flex: 1; padding: 10px; text-align: center; font-size: 12px; cursor: pointer; color: #9aa0a6; background: #2b2d31; }
   .dp-tab.active { color: #fff; background: #202124; border-bottom: 2px solid #5865f2; }
@@ -84,6 +87,7 @@ VIEWER_SHELL = """<!DOCTYPE html>
     <div id="status">Starting engine…</div>
     <div class="frame-wrap"><iframe id="frame" title="Mini Browser Frame"></iframe></div>
   </div>
+  <div id="dp-resize" title="Drag to resize"></div>
   <div id="devpanel">
     <div class="dp-tabs">
       <div class="dp-tab active" data-pane="requests">Requests</div>
@@ -118,6 +122,7 @@ VIEWER_SHELL = """<!DOCTYPE html>
   var go = document.getElementById('go');
   var devToggle = document.getElementById('dev-toggle');
   var devPanel = document.getElementById('devpanel');
+  var dpResize = document.getElementById('dp-resize');
   var paneRequests = document.getElementById('pane-requests');
   var paneConsole = document.getElementById('pane-console');
 
@@ -185,10 +190,37 @@ VIEWER_SHELL = """<!DOCTYPE html>
   home.addEventListener('click', function(){ navigate(HOME); });
 
   // --- Dev panel -----------------------------------------------------
+  var DP_WIDTH_KEY = 'aw-mini-browser-devpanel-width';
+  var savedWidth = parseInt(localStorage.getItem(DP_WIDTH_KEY), 10);
+  if (savedWidth) devPanel.style.width = savedWidth + 'px';
+
   devToggle.addEventListener('click', function(){
     devPanel.classList.toggle('open');
+    dpResize.classList.toggle('open');
     devToggle.classList.toggle('active');
   });
+
+  (function(){
+    var dragging = false;
+    dpResize.addEventListener('mousedown', function(e){
+      dragging = true;
+      dpResize.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', function(e){
+      if (!dragging) return;
+      var w = Math.max(200, Math.min(window.innerWidth - 200, window.innerWidth - e.clientX));
+      devPanel.style.width = w + 'px';
+    });
+    window.addEventListener('mouseup', function(){
+      if (!dragging) return;
+      dragging = false;
+      dpResize.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      localStorage.setItem(DP_WIDTH_KEY, parseInt(devPanel.style.width, 10));
+    });
+  })();
   document.querySelectorAll('.dp-tab').forEach(function(tab){
     tab.addEventListener('click', function(){
       document.querySelectorAll('.dp-tab').forEach(function(t){ t.classList.remove('active'); });
