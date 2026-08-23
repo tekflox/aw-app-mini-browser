@@ -286,6 +286,40 @@ def test_bare_data_proxies_and_wraps_status(client, monkeypatch):
     assert remote_headers["x-upstream"] == "yes"
 
 
+def test_bare_data_does_not_echo_upstream_content_encoding(client, monkeypatch):
+    # httpx.AsyncClient auto-decompresses the upstream body during the real
+    # transport read (upstream.content ends up plain) but leaves
+    # upstream.headers reporting the original content-encoding/content-length
+    # — echoing those verbatim told the downstream fetch() to re-decompress
+    # already-plain bytes, which hard failed real navigation (aol.com,
+    # uol.com.br: both gzip). Regression test for that — genuinely gzip the
+    # body so httpx.Response's own constructor-time decode (which real bytes
+    # off the wire go through too) leaves upstream.content plain, exactly
+    # mirroring what a real upstream fetch produces.
+    import gzip as gzip_mod
+
+    plain_body = b"<html>already decompressed by httpx</html>"
+
+    async def fake_request(self, method, url, headers=None, content=None):
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html", "content-encoding": "gzip", "content-length": "999"},
+            content=gzip_mod.compress(plain_body),
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", fake_request)
+
+    resp = client.get(
+        f"/bare/{FAKE_TOKEN}/v3/",
+        headers={"x-bare-url": "https://example.com/", "x-bare-headers": "{}"},
+    )
+    assert resp.status_code == 200
+    assert resp.content == plain_body
+    assert "content-encoding" not in resp.headers
+    assert resp.headers["content-length"] == str(len(resp.content))
+
+
 def test_bare_ws_rejects_unknown_token(client):
     with pytest.raises(Exception):
         with client.websocket_connect("/bare/not-a-real-token/v3/"):

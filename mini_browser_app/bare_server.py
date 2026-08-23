@@ -49,7 +49,16 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
 
-_BASE_PASS_HEADERS = {"content-encoding", "content-length", "last-modified"}
+# Deliberately excludes content-encoding/content-length: httpx.AsyncClient
+# transparently decompresses the upstream body (upstream.content is already
+# plain bytes) but leaves upstream.headers untouched, so echoing those two
+# verbatim told the client "this body is still gzip/br" when it wasn't —
+# the client's own fetch() then tried to re-decompress plain bytes and
+# hard-failed the whole request (surfaced live as aol.com/uol.com.br
+# throwing "TypeError: Failed to fetch" while google.com, served
+# uncompressed, worked fine). Leaving content-length unset lets Starlette
+# compute the correct one from the actual (decoded) body.
+_BASE_PASS_HEADERS = {"last-modified"}
 _BASE_FORWARD_HEADERS = {"accept-encoding", "accept-language"}
 _CACHE_EXTRA = {"if-modified-since", "if-none-match", "cache-control"}
 _CACHE_EXTRA_STATUS = {304}
