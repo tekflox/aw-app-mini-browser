@@ -1,0 +1,14 @@
+{
+  "name": "mini-browser-app-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Component-mode frontend for aw-app-mini-browser — owns ONLY the window's title-bar pop-out action (core.window.titlebar:mini-browser.main). The window BODY stays a plain declarative iframe (windows/main.json -> /view, server-rendered by viewer.py) — no app JS in the SPA for the body, same as before this contribution existed. src/plugin.jsx is the integrated-mode entry (register(host)), built as a Vite lib-mode bundle consumed by aw-app.json's contributes.frontend.bundle.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}

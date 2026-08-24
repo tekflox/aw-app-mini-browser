@@ -24,7 +24,8 @@
   },
   "permissions": [
     "routes:register",
-    "net:outbound"
+    "net:outbound",
+    "ui:code"
   ],
   "contributes": {
     "routes": [
@@ -32,6 +33,10 @@
         "prefix": "/api/apps/mini-browser"
       }
     ],
+    "frontend": {
+      "mode": "component",
+      "bundle": "ui/dist/mini-browser.js"
+    },
     "mcp": {
       "reload_on_save": true
     },
