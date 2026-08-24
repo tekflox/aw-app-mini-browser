@@ -143,7 +143,14 @@ def build_bare_routes() -> FastAPI:
         if client_pass_status := request.headers.get("x-bare-pass-status"):
             pass_status |= {int(s) for s in json.loads(client_pass_status)}
 
-        remote_headers = dict(upstream.headers)
+        # x-bare-headers is the OTHER copy of upstream.headers — the client
+        # rebuilds the page-visible Response from this blob, not from our
+        # direct HTTP response. Same lie as the direct headers had before
+        # the previous fix: content-encoding/content-length here still
+        # describe the compressed body httpx already decoded, so the client
+        # decompresses the (already-plain) bytes a second time and the page
+        # renders as garbage. Strip them from this copy too.
+        remote_headers = {k: v for k, v in upstream.headers.items() if k.lower() not in {"content-encoding", "content-length"}}
         response_headers = {name: remote_headers[name] for name in pass_headers if name in remote_headers}
         response_headers["x-bare-status"] = str(upstream.status_code)
         response_headers["x-bare-status-text"] = upstream.reason_phrase or ""
