@@ -202,22 +202,38 @@ VIEWER_SHELL = """<!DOCTYPE html>
 
   (function(){
     var dragging = false;
+    var pendingWidth = null;
+    var rafId = null;
+
+    function flush(){
+      rafId = null;
+      if (pendingWidth != null) devPanel.style.width = pendingWidth + 'px';
+    }
+
     dpResize.addEventListener('mousedown', function(e){
       dragging = true;
       dpResize.classList.add('dragging');
       document.body.style.userSelect = 'none';
+      // The iframe is a separate document — once the cursor crosses into it
+      // during a drag, it (not us) receives mousemove/mouseup, so the resize
+      // appears to freeze until the pointer re-enters the parent document.
+      // Disabling pointer-events for the drag's duration keeps every event
+      // routed to this listener instead.
+      frame.style.pointerEvents = 'none';
       e.preventDefault();
     });
     window.addEventListener('mousemove', function(e){
       if (!dragging) return;
-      var w = Math.max(200, Math.min(window.innerWidth - 200, window.innerWidth - e.clientX));
-      devPanel.style.width = w + 'px';
+      pendingWidth = Math.max(200, Math.min(window.innerWidth - 200, window.innerWidth - e.clientX));
+      if (rafId == null) rafId = requestAnimationFrame(flush);
     });
     window.addEventListener('mouseup', function(){
       if (!dragging) return;
       dragging = false;
       dpResize.classList.remove('dragging');
       document.body.style.userSelect = '';
+      frame.style.pointerEvents = '';
+      if (rafId != null){ cancelAnimationFrame(rafId); flush(); }
       localStorage.setItem(DP_WIDTH_KEY, parseInt(devPanel.style.width, 10));
     });
   })();
