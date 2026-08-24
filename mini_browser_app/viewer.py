@@ -81,6 +81,7 @@ VIEWER_SHELL = """<!DOCTYPE html>
       <div class="url-row">
         <input id="url-bar" type="text" spellcheck="false" autocomplete="off" placeholder="Type a URL...">
         <button id="go" type="button" class="icon-btn">Go</button>
+        <button id="open-external" type="button" class="icon-btn" title="Open in external window">&#8599;</button>
         <button id="dev-toggle" type="button" class="icon-btn" title="Dev panel">Dev</button>
       </div>
     </div>
@@ -120,6 +121,7 @@ VIEWER_SHELL = """<!DOCTYPE html>
   var reload = document.getElementById('reload');
   var home = document.getElementById('home');
   var go = document.getElementById('go');
+  var openExternal = document.getElementById('open-external');
   var devToggle = document.getElementById('dev-toggle');
   var devPanel = document.getElementById('devpanel');
   var dpResize = document.getElementById('dp-resize');
@@ -188,6 +190,12 @@ VIEWER_SHELL = """<!DOCTYPE html>
     setTimeout(function(){ frame.src = proxiedUrl(cur); }, 30);
   });
   home.addEventListener('click', function(){ navigate(HOME); });
+  openExternal.addEventListener('click', function(){
+    // history[index] is the real target URL, not the /bare/... proxied one —
+    // opening that would just re-enter this same sandboxed iframe elsewhere.
+    var cur = history[index];
+    if (cur) window.open(cur, '_blank', 'noopener');
+  });
 
   // --- Dev panel -----------------------------------------------------
   var DP_WIDTH_KEY = 'aw-mini-browser-devpanel-width';
