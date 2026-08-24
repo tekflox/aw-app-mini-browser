@@ -123,6 +123,18 @@ def build_bare_routes() -> FastAPI:
             if name in request.headers and name not in existing_lower:
                 upstream_headers[name] = request.headers[name]
 
+        # The browser's own fetch() advertises br/zstd, and that gets
+        # forwarded straight through above — but httpx only auto-decompresses
+        # gzip/deflate (no brotli/zstandard package installed). An upstream
+        # that picks br/zstd leaves upstream.content still compressed, and
+        # since we strip content-encoding from the response (see below), the
+        # client has no idea it needs to decode it — renders as garbled
+        # binary-as-text. Cap what we advertise so upstream can only pick a
+        # format we can actually undo.
+        for key in [k for k in upstream_headers if k.lower() == "accept-encoding"]:
+            del upstream_headers[key]
+        upstream_headers["accept-encoding"] = "gzip, deflate"
+
         body = await request.body()
 
         try:

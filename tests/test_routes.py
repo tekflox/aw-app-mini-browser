@@ -318,6 +318,49 @@ def test_bare_data_does_not_echo_upstream_content_encoding(client, monkeypatch):
     assert resp.content == plain_body
     assert "content-encoding" not in resp.headers
     assert resp.headers["content-length"] == str(len(resp.content))
+    # x-bare-headers is a SEPARATE copy of upstream.headers that the UV
+    # client uses to rebuild the page-visible Response — it told the same
+    # lie independently of the direct response headers above, and the
+    # client re-decompressed the already-plain body a second time,
+    # rendering as garbled text. Regression test for that second copy.
+    remote_headers = json.loads(resp.headers["x-bare-headers"])
+    assert "content-encoding" not in remote_headers
+    assert "content-length" not in remote_headers
+
+
+def test_bare_data_caps_accept_encoding_to_what_httpx_can_decode(client, monkeypatch):
+    # The browser's own fetch() advertises br/zstd in its Accept-Encoding,
+    # and that header gets forwarded straight through to the upstream — but
+    # httpx only auto-decompresses gzip/deflate (no brotli/zstandard package
+    # installed here). An upstream that picks br for its response leaves
+    # upstream.content still compressed; since we strip content-encoding
+    # from what we send back, the client has no signal to decode it either
+    # — reproduced live on cloudflare.com after the gzip-only fix above,
+    # rendering as garbled binary-as-text. Regression test: whatever the
+    # browser sends, upstream only ever gets asked for gzip/deflate.
+    captured = {}
+
+    async def fake_request(self, method, url, headers=None, content=None):
+        captured["accept-encoding"] = {k.lower(): v for k, v in headers.items()}.get("accept-encoding")
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            content=b"<html>ok</html>",
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", fake_request)
+
+    resp = client.get(
+        f"/bare/{FAKE_TOKEN}/v3/",
+        headers={
+            "x-bare-url": "https://example.com/",
+            "x-bare-headers": "{}",
+            "accept-encoding": "gzip, deflate, br, zstd",
+        },
+    )
+    assert resp.status_code == 200
+    assert captured["accept-encoding"] == "gzip, deflate"
 
 
 def test_bare_ws_rejects_unknown_token(client):
