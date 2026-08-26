@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from urllib.parse import urlparse
 
 import httpx
@@ -74,20 +75,26 @@ _STRIP_REQUEST_HEADERS = {
 }
 
 
-def _same_workspace_target(request_host: str, target_url: str) -> bool:
+def _same_workspace_target(*, target_url: str, source_hosts: list[str]) -> bool:
     """Return true only for HTTPS hosts under this exact workspace root."""
-    request_name = (request_host or "").split(":", 1)[0].lower().rstrip(".")
-    parts = request_name.split(".")
-    try:
-        marker = parts.index("workspace")
-    except ValueError:
-        return False
-    if marker < 1:
-        return False
-    workspace_root = ".".join(parts[marker - 1:])
     target = urlparse(target_url)
     target_name = (target.hostname or "").lower().rstrip(".")
-    return target.scheme == "https" and (target_name == workspace_root or target_name.endswith("." + workspace_root))
+    if target.scheme != "https":
+        return False
+    for source in source_hosts:
+        parsed_source = urlparse(source if "://" in source else "//" + source)
+        source_name = (parsed_source.hostname or "").lower().rstrip(".")
+        parts = source_name.split(".")
+        try:
+            marker = parts.index("workspace")
+        except ValueError:
+            continue
+        if marker < 1:
+            continue
+        workspace_root = ".".join(parts[marker - 1:])
+        if target_name == workspace_root or target_name.endswith("." + workspace_root):
+            return True
+    return False
 
 
 def build_bare_routes(cookie_bridge=None) -> FastAPI:
@@ -159,7 +166,13 @@ def build_bare_routes(cookie_bridge=None) -> FastAPI:
         # already authenticated this Bare request, so forward it as a Bearer
         # token only to HTTPS hosts inside this exact workspace. Never expose
         # it to arbitrary pages opened in Mini Browser.
-        if _same_workspace_target(request.headers.get("host", ""), bare_url):
+        trusted_sources = [
+            request.headers.get("host", ""),
+            request.headers.get("origin", ""),
+            request.headers.get("x-forwarded-host", ""),
+            os.environ.get("AW_WORKSPACE_API_URL", ""),
+        ]
+        if _same_workspace_target(target_url=bare_url, source_hosts=trusted_sources):
             for key in [k for k in upstream_headers if k.lower() == "authorization"]:
                 del upstream_headers[key]
             upstream_headers["authorization"] = f"Bearer {token}"

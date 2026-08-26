@@ -384,9 +384,14 @@ def test_bare_data_forwards_identity_only_to_this_workspace(monkeypatch):
         f"/bare/{FAKE_TOKEN}/v3/",
         headers={**common, "x-bare-url": "https://example.com/"},
     )
+    scoped.get(
+        f"/bare/{FAKE_TOKEN}/v3/",
+        headers={**common, "host": "internal:9030", "origin": "https://api.aw.workspace.aw.tekflox.com", "x-bare-url": "https://aw-app-portrait.app.aw.workspace.aw.tekflox.com/"},
+    )
 
     assert captured[0]["authorization"] == f"Bearer {FAKE_TOKEN}"
     assert "authorization" not in captured[1]
+    assert captured[2]["authorization"] == f"Bearer {FAKE_TOKEN}"
 
 
 def test_bare_ws_rejects_unknown_token(client):
