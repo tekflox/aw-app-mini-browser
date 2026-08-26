@@ -3,7 +3,7 @@
   "id": "mini-browser",
   "name": "Mini Browser",
   "version": "0.15.1",
-  "description": "In-app web browser with a real rewriting proxy \u2014 a vendored Ultraviolet (AGPL-3.0) intercepted client-side by a service worker, backed by this app's own TompHTTP Bare Server v3 (written from the open spec, no Node/Wisp/new process). Ships a resizable dev panel (Requests/Console) next to the Go button. Three independent MCP tool sets: browser_* pilots the shared aw-app-browser container over CDP (ported from aw-app-devctl); browser_screenshot_view renders this window's own iframe via devctl's side-container-free Playwright; minibrowser_* is Playwright-style remote control of a REAL, already-open Mini Browser window via devctl's tab relay + a postMessage bridge \u2014 not a piloted or headless browser at all.",
+  "description": "In-app web browser with a real rewriting proxy — a vendored Ultraviolet (AGPL-3.0) intercepted client-side by a service worker, backed by this app's own TompHTTP Bare Server v3 (written from the open spec, no Node/Wisp/new process). Ships a resizable dev panel (Requests/Console) next to the Go button. Three independent MCP tool sets: browser_* pilots the shared aw-app-browser container over CDP (ported from aw-app-devctl); browser_screenshot_view renders this window's own iframe via devctl's side-container-free Playwright; minibrowser_* is Playwright-style remote control of a REAL, already-open Mini Browser window via devctl's tab relay + a postMessage bridge — not a piloted or headless browser at all.",
   "tier": "inprocess",
   "requires_ui_refresh": true,
   "publisher": "TekFlox",
@@ -44,7 +44,7 @@
       {
         "id": "aw-mini-browser",
         "path": "skills/aw-mini-browser/SKILL.md",
-        "description": "What Mini Browser is and how its MCP tools actually work \u2014 it pilots the separate shared aw-app-browser (noVNC) container over CDP, not its own iframe. Use whenever asked to pilot a browser for quick assisted navigation/debugging, or when a mini-browser MCP call errors with \"aw-app-browser not reachable over CDP\"."
+        "description": "What Mini Browser is and how its MCP tools actually work — it pilots the separate shared aw-app-browser (noVNC) container over CDP, not its own iframe. Use whenever asked to pilot a browser for quick assisted navigation/debugging, or when a mini-browser MCP call errors with \"aw-app-browser not reachable over CDP\"."
       }
     ],
     "windows": [
@@ -65,6 +65,21 @@
         "type": "string",
         "default": "https://example.com",
         "description": "URL the browser loads on open and on the home button."
+      },
+      "share_browser_cookies": {
+        "type": "boolean",
+        "default": false,
+        "title": "Share Browser cookies",
+        "description": "Let this window's proxy reuse the logged-in sessions from the Browser app (aw-app-browser), so a site you're signed into there doesn't ask you to sign in again here. Cookies are attached server-side and stay invisible to page scripts. Requires the Proxy app, and only applies to the hosts listed below."
+      },
+      "cookie_share_hosts": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "title": "Hosts allowed to borrow cookies",
+        "description": "One host per entry, e.g. google.com (covers mail.google.com). Empty means share nothing, even when the toggle above is on."
       }
     },
     "required": []
@@ -75,7 +90,13 @@
         "id": "devctl",
         "version": ">=0.10.0",
         "required": false,
-        "reason": "GET /view/screenshot and the browser_screenshot_view MCP tool delegate to devctl's POST /render/screenshot (a side-container-free Playwright renderer). Without devctl installed, everything else in Mini Browser still works \u2014 only that one screenshot path 502s."
+        "reason": "GET /view/screenshot and the browser_screenshot_view MCP tool delegate to devctl's POST /render/screenshot (a side-container-free Playwright renderer). Without devctl installed, everything else in Mini Browser still works — only that one screenshot path 502s."
+      },
+      {
+        "id": "proxy",
+        "version": ">=0.8.0",
+        "required": false,
+        "reason": "Optional — only needed for the 'Share Browser cookies' setting, which reads aw-app-browser's cookie jar through the proxy's loopback-only GET /cookies-for. Everything else in Mini Browser works without it."
       }
     ]
   },

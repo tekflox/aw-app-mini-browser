@@ -69,6 +69,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import pilot
 from .bare_server import build_bare_routes
+from .cookies import BrowserCookieBridge
 from .cdp import client as browser_client
 from .viewer import VIEWER_SHELL
 
@@ -90,13 +91,17 @@ _BLOCKED_RESPONSE_HEADERS = {
 _last_url: str | None = None
 
 
-def build_routes(home_url: str) -> FastAPI:
+def build_routes(home_url: str, config: dict | None = None) -> FastAPI:
     api = FastAPI()
     client = httpx.AsyncClient(follow_redirects=True, timeout=15.0)
     devctl_base = f"http://127.0.0.1:{os.environ.get('AW_PORT', '9030')}/api/apps/devctl"
 
     api.mount("/uv", StaticFiles(directory=str(_STATIC_DIR / "uv")), name="uv-static")
-    api.mount("/bare", build_bare_routes())
+    config = config or {}
+    api.mount("/bare", build_bare_routes(BrowserCookieBridge(
+        enabled=config.get("share_browser_cookies", False),
+        hosts=config.get("cookie_share_hosts") or [],
+    )))
 
     @api.get("/view")
     async def view(request: Request):

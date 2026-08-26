@@ -44,10 +44,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, Response
+
+from .cookies import merge_cookie_header
 
 # Deliberately excludes content-encoding/content-length: httpx.AsyncClient
 # transparently decompresses the upstream body (upstream.content is already
@@ -71,7 +74,7 @@ _STRIP_REQUEST_HEADERS = {
 }
 
 
-def build_bare_routes() -> FastAPI:
+def build_bare_routes(cookie_bridge=None) -> FastAPI:
     api = FastAPI()
     client = httpx.AsyncClient(follow_redirects=False, timeout=30.0)
 
@@ -134,6 +137,24 @@ def build_bare_routes() -> FastAPI:
         for key in [k for k in upstream_headers if k.lower() == "accept-encoding"]:
             del upstream_headers[key]
         upstream_headers["accept-encoding"] = "gzip, deflate"
+
+        # Borrow aw-app-browser's logged-in sessions, if this app is
+        # configured to (off by default). Server-side on purpose: these
+        # values never reach the proxied page's JS, so an HttpOnly cookie
+        # stays HttpOnly. See cookies.py for the full why.
+        if cookie_bridge is not None:
+            parsed = urlparse(bare_url)
+            borrowed = await cookie_bridge.cookies_for(bare_url, parsed.hostname or "")
+            if borrowed:
+                existing_key = next(
+                    (k for k in upstream_headers if k.lower() == "cookie"), None)
+                merged = merge_cookie_header(
+                    upstream_headers.get(existing_key, "") if existing_key else "",
+                    borrowed,
+                )
+                if existing_key:
+                    del upstream_headers[existing_key]
+                upstream_headers["cookie"] = merged
 
         body = await request.body()
 

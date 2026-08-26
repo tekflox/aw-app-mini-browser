@@ -489,3 +489,86 @@ def test_window_spec_endpoints_are_registered():
             if widget["type"] == "iframe":
                 path = widget["src"].removeprefix("/api/apps/mini-browser")
                 assert ("GET", path) in registered, f"iframe src {path!r} has no matching route"
+
+
+# ---------------------------------------------------------------------------
+# borrowed browser cookies (see mini_browser_app/cookies.py)
+# ---------------------------------------------------------------------------
+
+def _bare_client_with_cookies(config):
+    """A client whose bare server is wired to a bridge built from ``config``,
+    with the proxy's /cookies-for stubbed to always hand back one cookie."""
+    app = routes_mod.build_routes("https://example.com", config)
+    return TestClient(app)
+
+
+def _capture_upstream(monkeypatch):
+    seen = {}
+
+    async def fake_request(self, method, url, headers=None, content=None):
+        seen["headers"] = dict(headers or {})
+        return httpx.Response(200, content=b"ok", request=httpx.Request(method, url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", fake_request)
+    return seen
+
+
+def _stub_proxy_reply(monkeypatch, cookies):
+    class _Resp:
+        status_code = 200
+
+        def json(self):
+            return {"cookies": cookies}
+
+    async def fake_get(self, url, params=None, **_kw):
+        return _Resp()
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+
+def test_bare_data_attaches_borrowed_cookies_when_enabled(monkeypatch):
+    seen = _capture_upstream(monkeypatch)
+    _stub_proxy_reply(monkeypatch, [{"name": "SID", "value": "borrowed"}])
+    client = _bare_client_with_cookies(
+        {"share_browser_cookies": True, "cookie_share_hosts": ["example.com"]})
+
+    client.get(f"/bare/{FAKE_TOKEN}/v3/",
+               headers={"x-bare-url": "https://example.com/", "x-bare-headers": "{}"})
+
+    assert seen["headers"]["cookie"] == "SID=borrowed"
+
+
+def test_bare_data_sends_no_cookies_when_the_feature_is_off(monkeypatch):
+    seen = _capture_upstream(monkeypatch)
+    _stub_proxy_reply(monkeypatch, [{"name": "SID", "value": "borrowed"}])
+    client = _bare_client_with_cookies({})   # default config = feature off
+
+    client.get(f"/bare/{FAKE_TOKEN}/v3/",
+               headers={"x-bare-url": "https://example.com/", "x-bare-headers": "{}"})
+
+    assert "cookie" not in {k.lower() for k in seen["headers"]}
+
+
+def test_bare_data_keeps_ultraviolets_own_cookie_on_conflict(monkeypatch):
+    seen = _capture_upstream(monkeypatch)
+    _stub_proxy_reply(monkeypatch, [{"name": "SID", "value": "borrowed"}])
+    client = _bare_client_with_cookies(
+        {"share_browser_cookies": True, "cookie_share_hosts": ["example.com"]})
+
+    client.get(f"/bare/{FAKE_TOKEN}/v3/",
+               headers={"x-bare-url": "https://example.com/",
+                        "x-bare-headers": json.dumps({"Cookie": "SID=from-uv"})})
+
+    assert seen["headers"]["cookie"] == "SID=from-uv"
+
+
+def test_bare_data_skips_hosts_outside_the_allowlist(monkeypatch):
+    seen = _capture_upstream(monkeypatch)
+    _stub_proxy_reply(monkeypatch, [{"name": "SID", "value": "borrowed"}])
+    client = _bare_client_with_cookies(
+        {"share_browser_cookies": True, "cookie_share_hosts": ["google.com"]})
+
+    client.get(f"/bare/{FAKE_TOKEN}/v3/",
+               headers={"x-bare-url": "https://example.com/", "x-bare-headers": "{}"})
+
+    assert "cookie" not in {k.lower() for k in seen["headers"]}

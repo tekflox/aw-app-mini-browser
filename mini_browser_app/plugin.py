@@ -21,8 +21,9 @@ log = logging.getLogger("aw_apps.mini_browser")
 class MiniBrowserAppPlugin:
     async def activate(self, ctx) -> None:
         self.ctx = ctx
-        home_url = (ctx.config or {}).get("home_url", "https://example.com")
-        subapp = routes_mod.build_routes(home_url)
+        config = ctx.config or {}
+        home_url = config.get("home_url", "https://example.com")
+        subapp = routes_mod.build_routes(home_url, config)
         ctx.routes.register(subapp)
         log.info("aw-app-mini-browser activated")
 
