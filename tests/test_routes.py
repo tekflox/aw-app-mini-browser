@@ -364,6 +364,31 @@ def test_bare_data_caps_accept_encoding_to_what_httpx_can_decode(client, monkeyp
     assert captured["accept-encoding"] == "gzip, deflate"
 
 
+def test_bare_data_forwards_identity_only_to_this_workspace(monkeypatch):
+    captured = []
+
+    async def fake_request(self, method, url, headers=None, content=None):
+        captured.append({k.lower(): v for k, v in (headers or {}).items()})
+        return httpx.Response(200, content=b"ok", request=httpx.Request(method, url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "request", fake_request)
+    app = routes_mod.build_routes("https://example.com")
+    scoped = TestClient(app, base_url="https://api.aw.workspace.aw.tekflox.com")
+    common = {"x-bare-headers": "{}"}
+
+    scoped.get(
+        f"/bare/{FAKE_TOKEN}/v3/",
+        headers={**common, "x-bare-url": "https://aw-app-portrait.app.aw.workspace.aw.tekflox.com/"},
+    )
+    scoped.get(
+        f"/bare/{FAKE_TOKEN}/v3/",
+        headers={**common, "x-bare-url": "https://example.com/"},
+    )
+
+    assert captured[0]["authorization"] == f"Bearer {FAKE_TOKEN}"
+    assert "authorization" not in captured[1]
+
+
 def test_bare_ws_rejects_unknown_token(client):
     with pytest.raises(Exception):
         with client.websocket_connect("/bare/not-a-real-token/v3/"):

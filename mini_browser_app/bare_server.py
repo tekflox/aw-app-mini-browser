@@ -74,6 +74,22 @@ _STRIP_REQUEST_HEADERS = {
 }
 
 
+def _same_workspace_target(request_host: str, target_url: str) -> bool:
+    """Return true only for HTTPS hosts under this exact workspace root."""
+    request_name = (request_host or "").split(":", 1)[0].lower().rstrip(".")
+    parts = request_name.split(".")
+    try:
+        marker = parts.index("workspace")
+    except ValueError:
+        return False
+    if marker < 1:
+        return False
+    workspace_root = ".".join(parts[marker - 1:])
+    target = urlparse(target_url)
+    target_name = (target.hostname or "").lower().rstrip(".")
+    return target.scheme == "https" and (target_name == workspace_root or target_name.endswith("." + workspace_root))
+
+
 def build_bare_routes(cookie_bridge=None) -> FastAPI:
     api = FastAPI()
     client = httpx.AsyncClient(follow_redirects=False, timeout=30.0)
@@ -137,6 +153,16 @@ def build_bare_routes(cookie_bridge=None) -> FastAPI:
         for key in [k for k in upstream_headers if k.lower() == "accept-encoding"]:
             del upstream_headers[key]
         upstream_headers["accept-encoding"] = "gzip, deflate"
+
+        # A proxied workspace app cannot see the browser's aw_id_jwt cookie:
+        # Ultraviolet intentionally owns an isolated cookie jar. The same JWT
+        # already authenticated this Bare request, so forward it as a Bearer
+        # token only to HTTPS hosts inside this exact workspace. Never expose
+        # it to arbitrary pages opened in Mini Browser.
+        if _same_workspace_target(request.headers.get("host", ""), bare_url):
+            for key in [k for k in upstream_headers if k.lower() == "authorization"]:
+                del upstream_headers[key]
+            upstream_headers["authorization"] = f"Bearer {token}"
 
         # Borrow aw-app-browser's logged-in sessions, if this app is
         # configured to (off by default). Server-side on purpose: these
