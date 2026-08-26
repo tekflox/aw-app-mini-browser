@@ -62,6 +62,7 @@ def test_view_shell_renders(client):
     assert "https://example.com" in resp.text
     assert "uv/sw.js" in resp.text
     assert "BareMuxConnection" in resp.text
+    assert 'allow="camera"' in resp.text
     assert FAKE_TOKEN in resp.text
 
 

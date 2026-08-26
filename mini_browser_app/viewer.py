@@ -85,7 +85,7 @@ VIEWER_SHELL = """<!DOCTYPE html>
       </div>
     </div>
     <div id="status">Starting engine…</div>
-    <div class="frame-wrap"><iframe id="frame" title="Mini Browser Frame"></iframe></div>
+    <div class="frame-wrap"><iframe id="frame" title="Mini Browser Frame" allow="camera"></iframe></div>
   </div>
   <div id="dp-resize" title="Drag to resize"></div>
   <div id="devpanel">
