@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "mini-browser",
   "name": "Mini Browser",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "In-app web browser with a real rewriting proxy \u2014 a vendored Ultraviolet (AGPL-3.0) intercepted client-side by a service worker, backed by this app's own TompHTTP Bare Server v3 (written from the open spec, no Node/Wisp/new process). Ships a resizable dev panel (Requests/Console) next to the Go button. Three independent MCP tool sets: browser_* pilots the shared aw-app-browser container over CDP (ported from aw-app-devctl); browser_screenshot_view renders this window's own iframe via devctl's side-container-free Playwright; minibrowser_* is Playwright-style remote control of a REAL, already-open Mini Browser window via devctl's tab relay + a postMessage bridge \u2014 not a piloted or headless browser at all.",
   "tier": "inprocess",
   "requires_ui_refresh": true,
