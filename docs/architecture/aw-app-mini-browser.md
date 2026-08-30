@@ -3,19 +3,20 @@ repo: architecture
 path: docs/architecture/aw-app-mini-browser.md
 source: generated
 edited: false
-checksum: sha256:160596b6ec6ff95cc6cf02bd00ef7215a52d330974a421e967f46b5edc973a7f
+checksum: sha256:1770a8a424cc819fe04ce3d6669afc4bc74c6a1f3d1e1f7b84c2d928eb3463ae
 ---
 # Mini Browser
 
 - **repo**: aw-app-mini-browser
 - **layer**: app
-- **technologies**: python
+- **technologies**: python, react
 - **health** (derived): planned
 
-Small in-app web browser — URL bar, back/forward/reload/home, an iframe, and a server-side proxy that strips X-Frame-Options/CSP so sites that would otherwise refuse to be framed can still be viewed inside AW. Also pilots the shared aw-app-browser container over CDP (navigate/click/type/eval/screenshot), ported from aw-app-devctl: a mini-browser-browser MCP tool wrapper is contributed for agents via mcp.json, with an HTTP twin under /browser/* for fetching screenshot bytes back onto the workspace filesystem.
+In-app web browser with a real rewriting proxy — a vendored Ultraviolet (AGPL-3.0) intercepted client-side by a service worker, backed by this app's own TompHTTP Bare Server v3 (written from the open spec, no Node/Wisp/new process). Ships a resizable dev panel (Requests/Console) next to the Go button. Three independent MCP tool sets: browser_* pilots the shared aw-app-browser container over CDP (ported from aw-app-devctl); browser_screenshot_view renders this window's own iframe via devctl's side-container-free Playwright; minibrowser_* is Playwright-style remote control of a REAL, already-open Mini Browser window via devctl's tab relay + a postMessage bridge — not a piloted or headless browser at all.
 
 ## Connections
 - `http` → **aw-workspace** — routes mounted at /api/apps/mini-browser
+- `other` → **aw-app-devctl** — GET /view/screenshot and the browser_screenshot_view MCP tool delegate to devctl's POST /render/screenshot (a side-container-free Playwright renderer)
 
 ## MCP tools
 _none exposed_
